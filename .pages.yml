@@ -83,7 +83,7 @@ content:
       - { name: featured, type: boolean }
 
   - name: archive
-    label: Archive Studio 2 · 멀티페이지
+    label: Archive Studio 3 · 멀티페이지/미디어
     type: file
     path: content/archive.json
     format: json
@@ -105,7 +105,7 @@ content:
               - { name: duration, label: 시간(ms), type: number }
               - { name: easing, type: string }
               - { name: color, label: 전환 배경색, type: string }
-          - { name: showPageNav, label: 자동 페이지 메뉴, type: boolean }
+          - { name: showPageNav, label: 고정 전역 페이지 메뉴, type: boolean }
           - { name: showScrollProgress, label: 스크롤 진행선, type: boolean }
           - { name: showMotionToggle, label: 모션 정지 버튼, type: boolean }
           - name: cursor
@@ -142,7 +142,7 @@ content:
             type: object
             fields:
               - { name: width, label: 너비, type: number }
-              - { name: height, label: 높이, type: number }
+              - { name: height, label: 페이지 길이, type: number }
               - { name: background, label: 배경색, type: string }
               - { name: grid, label: 스냅 간격, type: number }
               - { name: fontStylesheet, label: 웹폰트 CSS 주소, type: string }
@@ -191,6 +191,28 @@ content:
               - { name: alt, label: 미디어 설명, type: string }
               - { name: poster, label: 영상 포스터, type: image }
               - { name: captions, label: 영상 자막 경로, type: string }
+              - name: playbackMode
+                label: 영상·오디오 재생 방식
+                type: select
+                options:
+                  values: [autoplay, click, hover, in-view, controls, link]
+              - name: gifPlayback
+                label: GIF 재생 방식
+                type: select
+                options:
+                  values: [auto, click, hover]
+              - name: embedMode
+                label: 임베드 사용 방식
+                type: select
+                options:
+                  values: [interactive, click, link]
+              - { name: playLabel, label: 재생·링크 버튼 문구, type: string }
+              - { name: pauseWhenHidden, label: 화면 밖에서 정지, type: boolean }
+              - name: preload
+                label: 미디어 미리 불러오기
+                type: select
+                options:
+                  values: [none, metadata, auto]
               - { name: ariaLabel, label: 접근성 이름, type: string }
               - { name: decorative, label: 장식 이미지, type: boolean }
               - name: action
@@ -233,7 +255,6 @@ content:
                 options:
                   values: [no-repeat, repeat, repeat-x, repeat-y]
               - { name: repeatSize, label: 반복 이미지 크기, type: number }
-              - { name: autoplay, label: 자동재생, type: boolean }
               - { name: loop, label: 반복, type: boolean }
               - { name: muted, label: 음소거, type: boolean }
               - { name: controls, label: 컨트롤, type: boolean }
@@ -264,6 +285,18 @@ content:
                 options:
                   values: [horizontal, vertical]
               - { name: navGap, label: 메뉴 간격, type: number }
+              - name: navMode
+                label: 메뉴 구성
+                type: select
+                options:
+                  values: [listed, custom]
+              - { name: navPageIds, label: 직접 선택 페이지 ID, type: string, list: true }
+              - name: navActiveStyle
+                label: 현재 페이지 표시
+                type: select
+                options:
+                  values: [underline, pill, fade, none]
+              - { name: navShowIndex, label: 메뉴 번호 표시, type: boolean }
               - name: blendMode
                 type: select
                 options:

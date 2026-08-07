@@ -9,7 +9,7 @@ import {
   normalizeArchiveData,
   resolveArchivePage,
   syncArchiveFontStylesheet,
-} from "./archive-editor.js?v=studio2";
+} from "./archive-editor.js?v=studio3";
 
 const app = document.querySelector("#app");
 
@@ -486,11 +486,12 @@ function render({ preserveScroll = false } = {}) {
 
 async function loadArchive() {
   try {
+    const fresh = { cache: "no-store" };
     const [siteResponse, projectsResponse, notesResponse, archiveResponse] = await Promise.all([
-      fetch("./content/site.json"),
-      fetch("./content/projects.json"),
-      fetch("./content/notes.json"),
-      fetch("./content/archive.json"),
+      fetch("./content/site.json", fresh),
+      fetch("./content/projects.json", fresh),
+      fetch("./content/notes.json", fresh),
+      fetch("./content/archive.json", fresh),
     ]);
     if (!siteResponse.ok || !projectsResponse.ok || !notesResponse.ok || !archiveResponse.ok) throw new Error("Archive files could not be loaded.");
     [state.site, state.projects, state.notes, state.archiveCanvas] = await Promise.all([
