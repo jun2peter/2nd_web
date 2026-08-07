@@ -73,8 +73,13 @@ function safeEmbedURL(value = "") {
     const url = new URL(src, location.href);
     const host = url.hostname.replace(/^www\./, "").toLowerCase();
     if (["youtube.com", "youtu.be", "youtube-nocookie.com"].includes(host)) {
-      const id = host === "youtu.be" ? url.pathname.slice(1) : url.searchParams.get("v") || url.pathname.split("/").filter(Boolean).pop();
-      return /^[\w-]{6,}$/.test(id || "") ? `https://www.youtube-nocookie.com/embed/${id}` : "";
+      const list = url.searchParams.get("list") || "";
+      if (host !== "youtu.be" && url.pathname === "/playlist" && /^[\w-]{6,}$/.test(list)) return `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(list)}`;
+      let id = "";
+      if (host === "youtu.be") id = url.pathname.split("/").filter(Boolean)[0] || "";
+      else if (url.pathname === "/watch") id = url.searchParams.get("v") || "";
+      else id = url.pathname.match(/^\/(?:embed|shorts|live)\/([\w-]{6,})(?:\/|$)/)?.[1] || "";
+      return /^[\w-]{6,}$/.test(id) ? `https://www.youtube-nocookie.com/embed/${id}` : "";
     }
     if (["vimeo.com", "player.vimeo.com"].includes(host)) {
       const parts = url.pathname.split("/").filter(Boolean);
@@ -579,7 +584,7 @@ function embedURLWithOptions(value, block, { autoplay = false } = {}) {
     const url = new URL(source);
     const host = url.hostname.replace(/^www\./, "").toLowerCase();
     if (host === "youtube-nocookie.com") {
-      const id = url.pathname.split("/").filter(Boolean).pop();
+      const id = url.pathname.endsWith("/videoseries") ? "" : url.pathname.split("/").filter(Boolean).pop();
       url.searchParams.set("autoplay", autoplay ? "1" : "0");
       url.searchParams.set("controls", block.controls === false ? "0" : "1");
       url.searchParams.set("playsinline", "1");
@@ -628,7 +633,7 @@ function videoMarkup(block, { editing = false } = {}) {
   const track = safeURL(block.captions);
   const autoplay = mode === "autoplay" && block.muted;
   const showControls = mode === "controls" || (block.controls && !["click", "hover", "link"].includes(mode));
-  const button = ["click", "hover"].includes(mode) ? mediaPlayButton(block) : ["autoplay", "in-view"].includes(mode) ? mediaPlayButton(block, "Play video").replace("data-media-play", "data-media-play data-autoplay-fallback hidden") : "";
+  const button = ["click", "hover", "controls"].includes(mode) ? mediaPlayButton(block) : ["autoplay", "in-view"].includes(mode) ? mediaPlayButton(block, "Play video").replace("data-media-play", "data-media-play data-autoplay-fallback hidden") : "";
   return `<div class="canvas-native-media" data-native-media data-media-mode="${mode}" data-pause-hidden="${block.pauseWhenHidden}"><video data-media-element src="${escapeHTML(src)}" aria-label="${escapeHTML(block.alt || block.name)}" playsinline preload="${block.preload}" ${poster ? `poster="${escapeHTML(poster)}"` : ""} ${autoplay ? "autoplay" : ""} ${block.loop ? "loop" : ""} ${block.muted ? "muted" : ""} ${showControls ? "controls" : ""}>${track ? `<track kind="captions" src="${escapeHTML(track)}" srclang="ko" label="한국어">` : ""}</video>${button}</div>`;
 }
 
@@ -640,7 +645,7 @@ function audioMarkup(block, { editing = false } = {}) {
   if (editing) return `<div class="canvas-editor-media-preview canvas-editor-media-preview--audio"><span aria-hidden="true">♪</span><strong>${escapeHTML(block.name)}</strong><span class="canvas-editor-media-badge">${escapeHTML(mode.toUpperCase())}</span></div>`;
   if (mode === "link") return `<div class="canvas-audio-link"><span aria-hidden="true">♪</span><strong>${escapeHTML(block.playLabel || block.name)}</strong></div>`;
   const showControls = mode === "controls" || (block.controls && !["click", "hover", "link"].includes(mode));
-  const button = ["click", "hover"].includes(mode) ? mediaPlayButton(block) : ["autoplay", "in-view"].includes(mode) ? mediaPlayButton(block, "Play audio").replace("data-media-play", "data-media-play data-autoplay-fallback hidden") : "";
+  const button = ["click", "hover", "controls"].includes(mode) ? mediaPlayButton(block) : ["autoplay", "in-view"].includes(mode) ? mediaPlayButton(block, "Play audio").replace("data-media-play", "data-media-play data-autoplay-fallback hidden") : "";
   return `<div class="canvas-native-media canvas-native-media--audio" data-native-media data-media-mode="${mode}" data-pause-hidden="${block.pauseWhenHidden}"><audio data-media-element src="${escapeHTML(src)}" aria-label="${escapeHTML(block.alt || block.name)}" preload="${block.preload}" ${mode === "autoplay" ? "autoplay" : ""} ${block.loop ? "loop" : ""} ${block.muted ? "muted" : ""} ${showControls ? "controls" : ""}></audio>${button}</div>`;
 }
 
@@ -723,7 +728,7 @@ export function archiveBlockMarkup(rawBlock, { data, editing = false, draft = fa
   const lightboxAttributes = block.lightbox ? `data-lightbox ${lightboxSource ? `data-lightbox-src="${escapeHTML(lightboxSource)}"` : ""}` : "";
   const style = `${commonStyle(block)};--entrance-duration:${motion.entrance.duration}ms;--entrance-delay:${motion.entrance.delay}ms;--entrance-easing:${motion.entrance.easing};--hover-duration:${motion.hover.duration}ms;--hover-amount:${motion.hover.amount};--loop-duration:${motion.loop.duration}ms;--loop-delay:${motion.loop.delay}ms;--loop-direction:${motion.loop.direction};`;
   const wrapperSurface = ["image", "video", "audio", "gallery", "embed"].includes(block.type) ? surfaceStyle(block) : "";
-  const visitorDraggable = block.publicDraggable && !action && !block.lightbox;
+  const visitorDraggable = block.publicDraggable && !["video", "audio", "embed"].includes(block.type) && !action && !block.lightbox;
   return `<article id="${escapeHTML(anchor)}" class="canvas-block canvas-block--${block.type}${editing ? " is-editable" : ""}${block.visible ? "" : " is-hidden-layer"}${block.locked ? " is-locked" : ""}" data-block-id="${escapeHTML(block.id)}" data-entrance="${motion.entrance.preset}" data-trigger="${motion.entrance.trigger}" data-once="${motion.entrance.once}" data-loop="${motion.loop.preset}" data-hover="${motion.hover.preset}" data-parallax="${block.parallax}" data-mouse-parallax="${block.mouseParallax}" ${visitorDraggable ? "data-public-draggable" : ""} ${lightboxAttributes} style="${style}"><div class="canvas-block__entrance"><div class="canvas-block__loop"><div class="canvas-block__hover"><div class="canvas-block__content" style="${visualEffectStyle(block)};${wrapperSurface}">${content}</div></div></div></div>${editing ? '<button class="canvas-block__resize" data-resize type="button" aria-label="크기 조절"></button>' : ""}</article>`;
 }
 
@@ -866,7 +871,8 @@ function inspectorMarkup(block, data) {
   const contentBody = `${textFields}${mediaFields}${videoFields}${audioFields}${buttonFields}${marqueeFields}${galleryFields}${embedFields}${block.type === "nav" ? "" : ""}` || '<p class="studio-muted">이 요소는 내용 설정이 없어요.</p>';
   const layoutBody = `${field("레이어 이름", "name", block.name)}<div class="studio-fields studio-fields--two">${field("X", "x", block.x, "number")}${field("Y", "y", block.y, "number")}${field("W", "width", block.width, "number")}${field("H", "height", block.height, "number")}${field("회전", "rotation", block.rotation, "number")}${field("투명도", "opacity", block.opacity, "number")}</div><div class="studio-checks">${field("숨김", "visibleInverse", !block.visible, "checkbox")}${field("잠금", "locked", block.locked, "checkbox")}</div>${field("페이지 내 위치 ID", "anchorId", block.anchorId)}<div class="inspector-actions"><button data-action="duplicate" type="button">복제</button><button data-action="back" type="button">뒤로</button><button data-action="front" type="button">앞으로</button></div>`;
   const styleBody = `<div class="studio-fields studio-fields--two">${field("글자색", "color", block.color)}${field("배경/그라디언트", "background", block.background)}${field("선 색", "borderColor", block.borderColor)}${field("선 두께", "borderWidth", block.borderWidth, "number")}${field("둥근 모서리", "borderRadius", block.borderRadius, "number")}${field("안쪽 여백", "padding", block.padding, "number")}${field("블러", "blur", block.blur, "number")}${field("흑백", "grayscale", block.grayscale, "number")}</div>${field("블렌드", "blendMode", block.blendMode, "select", ["normal", "multiply", "screen", "overlay", "difference", "exclusion", "color-burn", "color-dodge"].map((item) => option(item, block.blendMode)).join(""))}<div class="studio-fields studio-fields--two">${field("그림자 X", "shadowX", block.shadowX, "number")}${field("그림자 Y", "shadowY", block.shadowY, "number")}${field("그림자 번짐", "shadowBlur", block.shadowBlur, "number")}${field("그림자 색", "shadowColor", block.shadowColor)}</div>`;
-  const motionBody = `${field("등장", "motion.entrance.preset", block.motion.entrance.preset, "select", ["none", "fade", "rise", "fall", "slide-left", "slide-right", "scale", "blur", "rotate"].map((item) => option(item, block.motion.entrance.preset)).join(""))}<div class="studio-fields studio-fields--two">${field("트리거", "motion.entrance.trigger", block.motion.entrance.trigger, "select", option("load", block.motion.entrance.trigger, "페이지 열림") + option("scroll", block.motion.entrance.trigger, "스크롤 진입"))}${field("시간(ms)", "motion.entrance.duration", block.motion.entrance.duration, "number")}${field("지연(ms)", "motion.entrance.delay", block.motion.entrance.delay, "number")}${field("호버", "motion.hover.preset", block.motion.hover.preset, "select", ["none", "lift", "scale", "tilt", "glow", "invert", "fade"].map((item) => option(item, block.motion.hover.preset)).join(""))}${field("반복", "motion.loop.preset", block.motion.loop.preset, "select", ["none", "float", "pulse", "spin", "bounce", "sway", "breathe"].map((item) => option(item, block.motion.loop.preset)).join(""))}${field("반복 시간(ms)", "motion.loop.duration", block.motion.loop.duration, "number")}${field("반복 방향", "motion.loop.direction", block.motion.loop.direction, "select", option("normal", block.motion.loop.direction, "정방향") + option("reverse", block.motion.loop.direction, "역방향") + option("alternate", block.motion.loop.direction, "왕복"))}${field("스크롤 패럴랙스", "parallax", block.parallax, "number")}${field("마우스 패럴랙스", "mouseParallax", block.mouseParallax, "number")}</div><div class="studio-checks">${field("스크롤 등장 한 번만", "motion.entrance.once", block.motion.entrance.once, "checkbox")}${field("방문자가 드래그", "publicDraggable", block.publicDraggable, "checkbox")}</div>`;
+  const visitorDragField = ["video", "audio", "embed"].includes(block.type) ? "" : field("방문자가 드래그", "publicDraggable", block.publicDraggable, "checkbox");
+  const motionBody = `${field("등장", "motion.entrance.preset", block.motion.entrance.preset, "select", ["none", "fade", "rise", "fall", "slide-left", "slide-right", "scale", "blur", "rotate"].map((item) => option(item, block.motion.entrance.preset)).join(""))}<div class="studio-fields studio-fields--two">${field("트리거", "motion.entrance.trigger", block.motion.entrance.trigger, "select", option("load", block.motion.entrance.trigger, "페이지 열림") + option("scroll", block.motion.entrance.trigger, "스크롤 진입"))}${field("시간(ms)", "motion.entrance.duration", block.motion.entrance.duration, "number")}${field("지연(ms)", "motion.entrance.delay", block.motion.entrance.delay, "number")}${field("호버", "motion.hover.preset", block.motion.hover.preset, "select", ["none", "lift", "scale", "tilt", "glow", "invert", "fade"].map((item) => option(item, block.motion.hover.preset)).join(""))}${field("반복", "motion.loop.preset", block.motion.loop.preset, "select", ["none", "float", "pulse", "spin", "bounce", "sway", "breathe"].map((item) => option(item, block.motion.loop.preset)).join(""))}${field("반복 시간(ms)", "motion.loop.duration", block.motion.loop.duration, "number")}${field("반복 방향", "motion.loop.direction", block.motion.loop.direction, "select", option("normal", block.motion.loop.direction, "정방향") + option("reverse", block.motion.loop.direction, "역방향") + option("alternate", block.motion.loop.direction, "왕복"))}${field("스크롤 패럴랙스", "parallax", block.parallax, "number")}${field("마우스 패럴랙스", "mouseParallax", block.mouseParallax, "number")}</div><div class="studio-checks">${field("스크롤 등장 한 번만", "motion.entrance.once", block.motion.entrance.once, "checkbox")}${visitorDragField}</div>`;
   return `<div class="inspector-head"><div><span>${escapeHTML(block.type)}</span><strong>${escapeHTML(block.name)}</strong></div><button data-action="delete" type="button">삭제</button></div>
     ${inspectorSection("내용", "텍스트 · 파일 · 데이터", contentBody, { open: true })}
     ${playbackFields ? inspectorSection(block.type === "nav" ? "메뉴 구성" : "재생 방식", "먼저 동작을 선택하세요", playbackFields, { open: true, className: "studio-inspector-section--accent" }) : ""}
@@ -967,6 +973,7 @@ function runPreflight(data) {
       if (block.type === "nav" && block.navMode === "custom" && !block.navPageIds.length) warnings.push(`${page.name} / ${block.name}: 직접 선택 메뉴에 표시할 페이지가 없음`);
       if (block.type === "nav" && block.navMode === "custom" && block.navPageIds.some((id) => !data.pages.some((item) => item.id === id && item.visibility !== "draft"))) warnings.push(`${page.name} / ${block.name}: 직접 선택 메뉴에 사라졌거나 초안인 페이지가 포함됨`);
       if (block.publicDraggable && action.type !== "none") warnings.push(`${page.name} / ${block.name}: 클릭 목적지와 방문자 드래그를 함께 쓸 수 없어 클릭이 우선됨`);
+      if (block.publicDraggable && ["video", "audio", "embed"].includes(block.type)) warnings.push(`${page.name} / ${block.name}: 미디어 조작과 충돌해 방문자 드래그가 사용되지 않음`);
       if (block.publicDraggable && block.lightbox) warnings.push(`${page.name} / ${block.name}: 라이트박스와 방문자 드래그를 함께 쓸 수 없어 라이트박스가 우선됨`);
       if (block.lightbox && action.type !== "none") warnings.push(`${page.name} / ${block.name}: 클릭 목적지와 라이트박스를 함께 켜서 클릭 목적지가 우선됨`);
       if (action.type === "page") {
@@ -981,7 +988,13 @@ function runPreflight(data) {
       if (action.type === "phone" && action.phone.replace(/\D/g, "").length < 6) warnings.push(`${page.name} / ${block.name}: 전화번호가 비었거나 너무 짧음`);
     });
   });
-  const hasContinuousMotion = data.pages.some((page) => page.blocks.some((block) => block.visible && (block.type === "marquee" || block.motion.loop.preset !== "none" || (block.type === "video" && block.playbackMode === "autoplay" && block.loop) || (block.type === "image" && block.gifPlayback === "auto" && isGIFSource(block.media || block.src)))));
+  const hasContinuousMotion = data.pages.some((page) => page.blocks.some((block) => block.visible && (
+    block.type === "marquee"
+    || block.motion.loop.preset !== "none"
+    || (["video", "audio"].includes(block.type) && ["autoplay", "in-view"].includes(block.playbackMode))
+    || (block.type === "gallery" && block.galleryMode === "slideshow" && block.galleryItems.length > 1)
+    || (block.type === "image" && block.gifPlayback === "auto" && isGIFSource(block.media || block.src))
+  )));
   if (hasContinuousMotion && !data.settings.showMotionToggle) warnings.push("계속 움직이는 요소가 있지만 방문자용 모션 정지 버튼이 꺼져 있음");
   return warnings;
 }
@@ -999,6 +1012,7 @@ export function bindArchiveViewer(source, pageOrId = "") {
     const scale = Math.min(1, innerWidth / page.canvas.width);
     canvas.style.transform = `scale(${scale})`;
     canvas.style.setProperty("--archive-control-scale", String(1 / Math.max(scale, 0.1)));
+    canvas.classList.toggle("archive-canvas--compact-controls", scale < 0.65);
     sizer.style.width = `${page.canvas.width * scale}px`;
     sizer.style.height = `${page.canvas.height * scale}px`;
   };
@@ -1054,8 +1068,6 @@ export function bindArchiveViewer(source, pageOrId = "") {
     if (!media) return;
     const setButton = (playing) => {
       if (!button) return;
-      const fallbackOnly = button.hasAttribute("data-autoplay-fallback");
-      if (fallbackOnly && playing) { button.hidden = true; return; }
       button.hidden = false;
       button.classList.toggle("is-playing", playing);
       button.setAttribute("aria-label", playing ? "Pause" : "Play");
@@ -1515,7 +1527,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       setPath(target, cleanPath, value);
       if (target === block && cleanPath === "playbackMode") {
         block.autoplay = ["autoplay", "in-view"].includes(value);
-        if (["autoplay", "in-view"].includes(value) && block.type === "video") block.muted = true;
+        if (["autoplay", "in-view", "hover"].includes(value) && block.type === "video") block.muted = true;
         if (value === "controls") block.controls = true;
       }
       if (target === block && cleanPath === "motion.loop.preset" && value === "spin") {

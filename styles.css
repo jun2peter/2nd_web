@@ -160,6 +160,8 @@ html[data-view="archive"],html[data-view="archive"] body { background: #fff; col
 .canvas-media-play span { font-size: 9px; }
 .canvas-media-play strong { font-size: inherit; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-media-play[hidden] { display: none; }
+.canvas-native-media[data-media-mode="controls"] .canvas-media-play { display: none; }
+.archive-canvas--compact-controls .canvas-native-media[data-media-mode="controls"] .canvas-media-play { display: flex; }
 .canvas-native-media--audio { align-items: center; background: #111; display: flex; padding: 12px; }
 .canvas-native-media--audio audio { height: 40px; }
 .canvas-audio-link { align-items: center; background: #111; color: #fff; display: flex; font-family: var(--mono); gap: 14px; justify-content: center; letter-spacing: .04em; padding: 16px; text-transform: uppercase; }
