@@ -1,12 +1,15 @@
 import {
   archiveCanvasMarkup,
+  archiveSiteChromeMarkup,
   archiveStudioTemplate,
   bindArchiveStudio,
   bindArchiveViewer,
   getArchiveDraft,
+  hasArchiveDraft,
   normalizeArchiveData,
+  resolveArchivePage,
   syncArchiveFontStylesheet,
-} from "./archive-editor.js";
+} from "./archive-editor.js?v=studio2";
 
 const app = document.querySelector("#app");
 
@@ -16,6 +19,7 @@ const state = {
   notes: [],
   archiveCanvas: null,
   activeArchiveCanvas: null,
+  activeArchivePage: null,
   cleanups: [],
 };
 
@@ -35,10 +39,11 @@ function safeURL(value = "") {
   return escapeHTML(url);
 }
 
-function routeURL({ view, work } = {}) {
+function routeURL({ view, work, page } = {}) {
   const params = new URLSearchParams();
   if (view === "archive") params.set("view", "archive");
   if (work) params.set("work", work);
+  if (page) params.set("page", page);
   const query = params.toString();
   return query ? `?${query}` : "./";
 }
@@ -168,15 +173,23 @@ function experienceTemplate() {
   </main>`;
 }
 
-function archiveTemplate({ editing = false, draft = false } = {}) {
+function archiveTemplate({ editing = false, draft = false, pageSlug = "" } = {}) {
   const published = normalizeArchiveData(state.archiveCanvas);
-  const documentData = editing || draft ? getArchiveDraft(published) : published;
+  const localDraft = editing || (draft && hasArchiveDraft());
+  const documentData = localDraft ? getArchiveDraft(published) : published;
+  const page = resolveArchivePage(documentData, pageSlug, { includeDraft: localDraft });
   state.activeArchiveCanvas = documentData;
-  syncArchiveFontStylesheet(documentData);
-  if (editing) return archiveStudioTemplate(documentData);
-  return `<main id="main" class="archive-page">
+  state.activeArchivePage = page;
+  if (!page) return errorTemplate("This archive page is not published.");
+  document.documentElement.style.setProperty("--page-transition-duration", `${documentData.settings.transition.duration}ms`);
+  document.documentElement.style.setProperty("--page-transition-easing", documentData.settings.transition.easing);
+  document.documentElement.style.setProperty("--page-transition-color", documentData.settings.transition.color);
+  syncArchiveFontStylesheet(documentData, page.id);
+  if (editing) return archiveStudioTemplate(documentData, page.id);
+  return `<main id="main" class="archive-page archive-transition-${escapeHTML(documentData.settings.transition.preset)}" style="--page-transition-duration:${documentData.settings.transition.duration}ms;--page-transition-easing:${escapeHTML(documentData.settings.transition.easing)};--page-transition-color:${escapeHTML(documentData.settings.transition.color)}">
     <header class="archive-canvas-nav">${viewSwitch("archive", "light")}</header>
-    <div class="archive-canvas-viewport"><div class="archive-canvas-sizer" data-archive-sizer>${archiveCanvasMarkup(documentData)}</div></div>
+    ${archiveSiteChromeMarkup(documentData, page, { draft: localDraft })}
+    <div class="archive-canvas-viewport"><div class="archive-canvas-sizer" data-archive-sizer>${archiveCanvasMarkup(documentData, page, { draft: localDraft })}</div></div>
   </main>`;
 }
 
@@ -221,11 +234,28 @@ function bindRouteLinks() {
     link.addEventListener("click", (event) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      history.pushState({}, "", link.getAttribute("href"));
-      render();
-      window.scrollTo(0, 0);
+      const navigate = () => {
+        history.pushState({}, "", link.getAttribute("href"));
+        render();
+        requestAnimationFrame(() => { if (!scrollToCurrentArchiveAnchor()) window.scrollTo(0, 0); });
+      };
+      const transition = state.activeArchiveCanvas?.settings?.transition?.preset;
+      if (document.startViewTransition && transition && transition !== "none" && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        document.documentElement.classList.add("archive-native-transition");
+        document.startViewTransition(navigate).finished.finally(() => document.documentElement.classList.remove("archive-native-transition"));
+      }
+      else navigate();
     });
   });
+}
+
+function scrollToCurrentArchiveAnchor() {
+  if (!location.hash) return false;
+  const id = decodeURIComponent(location.hash.slice(1));
+  const target = document.getElementById(id);
+  if (!target) return false;
+  target.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  return true;
 }
 
 function bindSharedControls() {
@@ -274,8 +304,8 @@ function bindExperience() {
 
 function bindArchive({ editing = false } = {}) {
   const cleanup = editing
-    ? bindArchiveStudio(state.activeArchiveCanvas, state.archiveCanvas)
-    : bindArchiveViewer(state.activeArchiveCanvas);
+    ? bindArchiveStudio(state.activeArchiveCanvas, state.archiveCanvas, state.activeArchivePage?.id)
+    : state.activeArchivePage ? bindArchiveViewer(state.activeArchiveCanvas, state.activeArchivePage) : null;
   if (cleanup) state.cleanups.push(cleanup);
 }
 
@@ -373,6 +403,52 @@ function applyTheme() {
   root.style.setProperty("--ink", theme.ink);
 }
 
+function setMeta(selector, attributes) {
+  let node = document.head.querySelector(selector);
+  if (!node) {
+    node = document.createElement("meta");
+    document.head.append(node);
+  }
+  Object.entries(attributes).forEach(([name, value]) => node.setAttribute(name, value));
+}
+
+function setCanonical(href) {
+  let node = document.head.querySelector('link[rel="canonical"]');
+  if (!node) {
+    node = document.createElement("link");
+    node.rel = "canonical";
+    document.head.append(node);
+  }
+  node.href = href;
+}
+
+function applyArchiveMeta(documentData, page, { draft = false } = {}) {
+  if (!page) {
+    setMeta('meta[name="robots"]', { name: "robots", content: "noindex,nofollow" });
+    return;
+  }
+  const suffix = documentData.settings.seo.titleSuffix || ` — ${state.site.name}`;
+  const title = `${page.seo.title || page.name}${suffix}`;
+  const description = page.seo.description || documentData.settings.seo.description || state.site.intro;
+  const image = safeURL(page.seo.image || documentData.settings.seo.image);
+  const canonical = new URL(location.href);
+  canonical.searchParams.delete("edit");
+  canonical.searchParams.delete("draft");
+  document.title = title;
+  document.documentElement.lang = page.seo.language || "ko";
+  setMeta('meta[name="description"]', { name: "description", content: description });
+  setMeta('meta[property="og:title"]', { property: "og:title", content: title });
+  setMeta('meta[property="og:description"]', { property: "og:description", content: description });
+  setMeta('meta[property="og:image"]', { property: "og:image", content: image });
+  setMeta('meta[property="og:url"]', { property: "og:url", content: canonical.href });
+  setMeta('meta[name="twitter:card"]', { name: "twitter:card", content: image ? "summary_large_image" : "summary" });
+  setMeta('meta[name="twitter:title"]', { name: "twitter:title", content: title });
+  setMeta('meta[name="twitter:description"]', { name: "twitter:description", content: description });
+  setCanonical(canonical.href);
+  const noIndex = draft || page.visibility === "draft" || page.seo.noIndex || documentData.settings.seo.noIndex;
+  setMeta('meta[name="robots"]', { name: "robots", content: noIndex ? "noindex,nofollow" : "index,follow" });
+}
+
 function render({ preserveScroll = false } = {}) {
   const previousScroll = scrollY;
   clearPageEffects();
@@ -381,6 +457,7 @@ function render({ preserveScroll = false } = {}) {
   const archive = params.get("view") === "archive";
   const archiveEditing = archive && params.get("edit") === "1";
   const archiveDraft = archive && params.get("draft") === "1";
+  const archivePageSlug = archive ? params.get("page") || "" : "";
   document.documentElement.dataset.view = work ? "project" : archive ? "archive" : "experience";
   document.querySelector('meta[name="theme-color"]').setAttribute("content", archive ? "#ffffff" : "#080808");
 
@@ -389,11 +466,14 @@ function render({ preserveScroll = false } = {}) {
     app.innerHTML = project ? detailTemplate(project, archive) : errorTemplate("This work is not in the archive.");
     document.title = project ? `${project.title} — ${state.site.name}` : `Not found — ${state.site.name}`;
   } else if (archive) {
-    app.innerHTML = archiveTemplate({ editing: archiveEditing, draft: archiveDraft });
-    document.title = `${archiveEditing ? "Archive Studio" : archiveDraft ? "Archive Draft" : "Archive"} — ${state.site.name}`;
+    app.innerHTML = archiveTemplate({ editing: archiveEditing, draft: archiveDraft, pageSlug: archivePageSlug });
+    if (archiveEditing) document.title = `Archive Studio — ${state.site.name}`;
+    else applyArchiveMeta(state.activeArchiveCanvas, state.activeArchivePage, { draft: archiveDraft });
   } else {
     app.innerHTML = experienceTemplate();
     document.title = `${state.site.name} — Works & Research`;
+    document.documentElement.lang = "en";
+    setMeta('meta[name="robots"]', { name: "robots", content: "index,follow" });
   }
 
   bindRouteLinks();
@@ -401,6 +481,7 @@ function render({ preserveScroll = false } = {}) {
   if (!work && archive) bindArchive({ editing: archiveEditing });
   if (!work && !archive) bindExperience();
   if (preserveScroll) requestAnimationFrame(() => scrollTo(0, previousScroll));
+  else if (archive && location.hash) requestAnimationFrame(scrollToCurrentArchiveAnchor);
 }
 
 async function loadArchive() {
@@ -428,7 +509,7 @@ async function loadArchive() {
 
 addEventListener("popstate", () => {
   render();
-  scrollTo(0, 0);
+  requestAnimationFrame(() => { if (!scrollToCurrentArchiveAnchor()) scrollTo(0, 0); });
 });
 
 loadArchive();

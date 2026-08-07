@@ -1,11 +1,48 @@
 {
-  "version": 1,
-  "canvas": {
-    "width": 1440,
-    "height": 1800,
-    "background": "#ffffff",
-    "grid": 8,
-    "fontStylesheet": ""
+  "version": 2,
+  "settings": {
+    "defaultPageId": "page-home",
+    "transition": {
+      "preset": "fade",
+      "duration": 420,
+      "easing": "cubic-bezier(.22,1,.36,1)",
+      "color": "#ffffff"
+    },
+    "showPageNav": false,
+    "showScrollProgress": false,
+    "showMotionToggle": false,
+    "cursor": "default",
+    "cursorColor": "#111111",
+    "seo": {
+      "titleSuffix": " — PARK SEUNGJUN",
+      "description": "",
+      "image": "",
+      "noIndex": false
+    }
   },
-  "blocks": []
+  "pages": [
+    {
+      "id": "page-home",
+      "name": "Home",
+      "slug": "home",
+      "visibility": "listed",
+      "canvas": {
+        "width": 1440,
+        "height": 1800,
+        "background": "#ffffff",
+        "grid": 8,
+        "fontStylesheet": ""
+      },
+      "seo": {
+        "title": "Archive",
+        "description": "",
+        "image": "",
+        "noIndex": false,
+        "language": "ko"
+      },
+      "blocks": []
+    }
+  ],
+  "components": [],
+  "globals": []
 }
