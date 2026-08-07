@@ -1,0 +1,98 @@
+media:
+  input: media
+  output: /media
+
+content:
+  - name: site
+    label: Site settings
+    type: file
+    path: content/site.json
+    format: json
+    fields:
+      - { name: name, label: Display name, type: string, required: true }
+      - { name: shortName, label: Short mark, type: string }
+      - { name: role, label: Role line, type: string }
+      - { name: location, label: Location, type: string }
+      - { name: email, label: Contact email, type: string }
+      - { name: intro, label: Homepage statement, type: text }
+      - { name: about, label: About, type: text }
+      - { name: availability, label: Archive note, type: string }
+      - name: theme
+        label: Look and motion
+        type: object
+        fields:
+          - { name: accent, label: Accent colour, type: string }
+          - { name: signal, label: Signal colour, type: string }
+          - { name: paper, label: Archive background, type: string }
+          - { name: ink, label: Archive text, type: string }
+          - name: motion
+            label: Motion level
+            type: select
+            options:
+              values: [full, gentle, off]
+      - name: socials
+        label: Social links
+        type: object
+        list: true
+        fields:
+          - { name: label, type: string }
+          - { name: url, type: string }
+
+  - name: projects
+    label: Works
+    type: file
+    path: content/projects.json
+    format: json
+    list: true
+    fields:
+      - { name: slug, label: URL name, type: string, required: true }
+      - { name: title, label: English title, type: string, required: true }
+      - { name: titleKo, label: Korean title, type: string }
+      - { name: year, type: string }
+      - name: category
+        type: select
+        options:
+          values: [Robotic Installation, Moving Image, AI Film, Research, Object, Performance]
+      - { name: status, type: string }
+      - { name: format, type: string }
+      - { name: duration, type: string }
+      - { name: role, type: text }
+      - { name: summary, type: text }
+      - { name: statement, type: text }
+      - { name: researchQuestion, label: Research question, type: text }
+      - { name: methods, type: string, list: true }
+      - { name: tools, label: Tools and materials, type: string, list: true }
+      - { name: recognition, label: Exhibition / recognition, type: text }
+      - { name: cover, label: Cover image, type: image }
+      - name: gallery
+        type: object
+        list: true
+        fields:
+          - { name: image, type: image }
+          - { name: caption, type: string }
+      - name: visual
+        label: Placeholder visual
+        type: object
+        fields:
+          - { name: accent, type: string }
+          - { name: secondary, type: string }
+          - name: motif
+            type: select
+            options:
+              values: [eyes, balance, sun]
+      - { name: featured, type: boolean }
+
+  - name: notes
+    label: Research axes
+    type: file
+    path: content/notes.json
+    format: json
+    list: true
+    fields:
+      - { name: number, type: string }
+      - { name: title, type: string }
+      - { name: text, type: text }
+
+settings:
+  content:
+    merge: true
