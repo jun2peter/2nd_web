@@ -1,0 +1,32 @@
+{
+  "color": {
+    "experience": {
+      "background": { "$type": "color", "$value": "#080808" },
+      "foreground": { "$type": "color", "$value": "#F4F3ED" },
+      "muted": { "$type": "color", "$value": "#A4A39C" },
+      "accent": { "$type": "color", "$value": "#FF5A36" },
+      "signal": { "$type": "color", "$value": "#D8FF3E" }
+    },
+    "archive": {
+      "paper": { "$type": "color", "$value": "#F1EFE8" },
+      "ink": { "$type": "color", "$value": "#11110F" },
+      "accent": { "$type": "color", "$value": "#FF5A36" }
+    }
+  },
+  "space": {
+    "page-mobile": { "$type": "dimension", "$value": "14px" },
+    "page-desktop": { "$type": "dimension", "$value": "22px" },
+    "section-small": { "$type": "dimension", "$value": "80px" },
+    "section-large": { "$type": "dimension", "$value": "144px" }
+  },
+  "type": {
+    "label": { "fontFamily": { "$type": "fontFamily", "$value": "SFMono-Regular" }, "fontSize": { "$type": "dimension", "$value": "9px" }, "letterSpacing": { "$type": "dimension", "$value": "0.72px" } },
+    "body": { "fontFamily": { "$type": "fontFamily", "$value": "Georgia" }, "fontSize": { "$type": "dimension", "$value": "16px" }, "lineHeight": { "$type": "number", "$value": 1.48 } },
+    "display": { "fontFamily": { "$type": "fontFamily", "$value": "Arial" }, "fontWeight": { "$type": "fontWeight", "$value": 400 }, "lineHeight": { "$type": "number", "$value": 0.9 }, "letterSpacing": { "$type": "dimension", "$value": "-4px" } }
+  },
+  "motion": {
+    "fast": { "$type": "duration", "$value": "180ms" },
+    "standard": { "$type": "duration", "$value": "500ms" },
+    "slow": { "$type": "duration", "$value": "900ms" }
+  }
+}
