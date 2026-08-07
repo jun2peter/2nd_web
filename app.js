@@ -1,11 +1,21 @@
+import {
+  archiveCanvasMarkup,
+  archiveStudioTemplate,
+  bindArchiveStudio,
+  bindArchiveViewer,
+  getArchiveDraft,
+  normalizeArchiveData,
+  syncArchiveFontStylesheet,
+} from "./archive-editor.js";
+
 const app = document.querySelector("#app");
 
 const state = {
   site: null,
   projects: [],
   notes: [],
-  archiveCategory: "All",
-  archiveLayout: "grid",
+  archiveCanvas: null,
+  activeArchiveCanvas: null,
   cleanups: [],
 };
 
@@ -133,7 +143,7 @@ function experienceTemplate() {
       <p class="section-label">Position / 01</p>
       <div class="experience-manifesto__body">
         <p>I do not begin with what a machine can <em>do.</em></p>
-        <p>I begin with the relation its interface makes <em>possible.</em></p>
+        <p>I begin with the encounter, gesture, and trace it leaves <em>behind.</em></p>
       </div>
       <div class="experience-manifesto__aside"><span>Robotics</span><span>Moving image</span><span>AI systems</span><span>Metal inlay</span></div>
     </section>
@@ -150,7 +160,7 @@ function experienceTemplate() {
 
     <section class="experience-about" data-reveal>
       <p class="section-label">About / 04</p>
-      <div class="experience-about__copy"><h2>Artist by formation.<br>Interface designer by method.<br>Researcher by direction.</h2><p>${escapeHTML(site.about)}</p></div>
+      <div class="experience-about__copy"><h2>Artist by formation.<br>Designer by practice.<br>Researcher in progress.</h2><p>${escapeHTML(site.about)}</p></div>
       <div class="experience-about__contact"><p>${escapeHTML(site.availability)}</p><a href="mailto:${escapeHTML(site.email)}">${escapeHTML(site.email)}</a></div>
     </section>
 
@@ -158,36 +168,15 @@ function experienceTemplate() {
   </main>`;
 }
 
-function archiveTemplate() {
-  const { site, projects, archiveCategory, archiveLayout } = state;
-  const categories = ["All", ...new Set(projects.map((project) => project.category))];
-  const visible = archiveCategory === "All" ? projects : projects.filter((project) => project.category === archiveCategory);
-  const projectMarkup = visible
-    .map(
-      (project) => `<a data-route href="${routeURL({ work: project.slug, view: "archive" })}" class="archive-project">
-        <div class="archive-project__index">${String(projects.indexOf(project) + 1).padStart(2, "0")}</div>
-        ${projectVisual(project)}
-        <div class="archive-project__title"><h2>${escapeHTML(project.title)}</h2><p>${escapeHTML(project.titleKo)}</p></div>
-        <div class="archive-project__meta"><span>${escapeHTML(project.category)}</span><span>${escapeHTML(project.year)}</span></div>
-        <p class="archive-project__summary">${escapeHTML(project.summary)}</p><span class="archive-project__open" aria-hidden="true">↗</span>
-      </a>`,
-    )
-    .join("");
-
+function archiveTemplate({ editing = false, draft = false } = {}) {
+  const published = normalizeArchiveData(state.archiveCanvas);
+  const documentData = editing || draft ? getArchiveDraft(published) : published;
+  state.activeArchiveCanvas = documentData;
+  syncArchiveFontStylesheet(documentData);
+  if (editing) return archiveStudioTemplate(documentData);
   return `<main id="main" class="archive-page">
-    <header class="archive-header"><a data-route href="${routeURL({ view: "archive" })}" class="archive-wordmark">${escapeHTML(site.name)}</a>${viewSwitch("archive", "light")}<div class="archive-header__right"><span>${escapeHTML(site.location)}</span><a href="mailto:${escapeHTML(site.email)}">Email ↗</a></div></header>
-    <section class="archive-intro" aria-labelledby="archive-title">
-      <div class="archive-intro__role"><span>Practice</span><p>${escapeHTML(site.role)}</p></div>
-      <div class="archive-intro__statement"><p class="archive-kicker">Portfolio / Research archive</p><h1 id="archive-title">${escapeHTML(site.intro)}</h1></div>
-      <div class="archive-intro__index"><span>Index</span><dl><div><dt>Works</dt><dd>${String(projects.length).padStart(2, "0")}</dd></div><div><dt>Axes</dt><dd>${String(state.notes.length).padStart(2, "0")}</dd></div><div><dt>Updated</dt><dd>2026.08</dd></div></dl></div>
-    </section>
-    <section class="archive-work-section" id="works">
-      <div class="archive-toolbar"><p>Selected works</p><div class="archive-filters" aria-label="Filter works by category">${categories.map((category) => `<button type="button" data-category="${escapeHTML(category)}" class="${category === archiveCategory ? "is-active" : ""}" aria-pressed="${category === archiveCategory}">${escapeHTML(category)}</button>`).join("")}</div><div class="archive-layout-toggle" aria-label="Choose archive layout"><button type="button" data-layout="grid" class="${archiveLayout === "grid" ? "is-active" : ""}">Grid</button><span>/</span><button type="button" data-layout="list" class="${archiveLayout === "list" ? "is-active" : ""}">List</button></div></div>
-      <div class="archive-projects archive-projects--${archiveLayout}">${projectMarkup}</div>
-    </section>
-    <section class="archive-axes"><div class="archive-axes__label"><p>Research axes</p><span>Questions in progress</span></div><div class="archive-axes__list">${researchNotesMarkup()}</div></section>
-    <section class="archive-about"><p>About</p><div><p>${escapeHTML(site.about)}</p><div class="archive-about__links"><a href="mailto:${escapeHTML(site.email)}">${escapeHTML(site.email)}</a>${site.socials.map((social) => `<a href="${safeURL(social.url)}" target="_blank" rel="noreferrer">${escapeHTML(social.label)} ↗</a>`).join("")}</div></div></section>
-    <footer class="archive-footer"><span>© ${new Date().getFullYear()}</span><span>Designed as a living archive</span><button class="top-button" type="button">Back to top ↑</button></footer>
+    <header class="archive-canvas-nav">${viewSwitch("archive", "light")}</header>
+    <div class="archive-canvas-viewport"><div class="archive-canvas-sizer" data-archive-sizer>${archiveCanvasMarkup(documentData)}</div></div>
   </main>`;
 }
 
@@ -283,19 +272,11 @@ function bindExperience() {
   bindPointerField();
 }
 
-function bindArchive() {
-  document.querySelectorAll("[data-category]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.archiveCategory = button.dataset.category;
-      render({ preserveScroll: true });
-    });
-  });
-  document.querySelectorAll("[data-layout]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.archiveLayout = button.dataset.layout;
-      render({ preserveScroll: true });
-    });
-  });
+function bindArchive({ editing = false } = {}) {
+  const cleanup = editing
+    ? bindArchiveStudio(state.activeArchiveCanvas, state.archiveCanvas)
+    : bindArchiveViewer(state.activeArchiveCanvas);
+  if (cleanup) state.cleanups.push(cleanup);
 }
 
 function bindPointerField() {
@@ -398,16 +379,18 @@ function render({ preserveScroll = false } = {}) {
   const params = new URLSearchParams(location.search);
   const work = params.get("work");
   const archive = params.get("view") === "archive";
+  const archiveEditing = archive && params.get("edit") === "1";
+  const archiveDraft = archive && params.get("draft") === "1";
   document.documentElement.dataset.view = work ? "project" : archive ? "archive" : "experience";
-  document.querySelector('meta[name="theme-color"]').setAttribute("content", archive ? state.site.theme.paper : "#080808");
+  document.querySelector('meta[name="theme-color"]').setAttribute("content", archive ? "#ffffff" : "#080808");
 
   if (work) {
     const project = state.projects.find((item) => item.slug === work);
     app.innerHTML = project ? detailTemplate(project, archive) : errorTemplate("This work is not in the archive.");
     document.title = project ? `${project.title} — ${state.site.name}` : `Not found — ${state.site.name}`;
   } else if (archive) {
-    app.innerHTML = archiveTemplate();
-    document.title = `Archive — ${state.site.name}`;
+    app.innerHTML = archiveTemplate({ editing: archiveEditing, draft: archiveDraft });
+    document.title = `${archiveEditing ? "Archive Studio" : archiveDraft ? "Archive Draft" : "Archive"} — ${state.site.name}`;
   } else {
     app.innerHTML = experienceTemplate();
     document.title = `${state.site.name} — Works & Research`;
@@ -415,23 +398,25 @@ function render({ preserveScroll = false } = {}) {
 
   bindRouteLinks();
   bindSharedControls();
-  if (!work && archive) bindArchive();
+  if (!work && archive) bindArchive({ editing: archiveEditing });
   if (!work && !archive) bindExperience();
   if (preserveScroll) requestAnimationFrame(() => scrollTo(0, previousScroll));
 }
 
 async function loadArchive() {
   try {
-    const [siteResponse, projectsResponse, notesResponse] = await Promise.all([
+    const [siteResponse, projectsResponse, notesResponse, archiveResponse] = await Promise.all([
       fetch("./content/site.json"),
       fetch("./content/projects.json"),
       fetch("./content/notes.json"),
+      fetch("./content/archive.json"),
     ]);
-    if (!siteResponse.ok || !projectsResponse.ok || !notesResponse.ok) throw new Error("Archive files could not be loaded.");
-    [state.site, state.projects, state.notes] = await Promise.all([
+    if (!siteResponse.ok || !projectsResponse.ok || !notesResponse.ok || !archiveResponse.ok) throw new Error("Archive files could not be loaded.");
+    [state.site, state.projects, state.notes, state.archiveCanvas] = await Promise.all([
       siteResponse.json(),
       projectsResponse.json(),
       notesResponse.json(),
+      archiveResponse.json(),
     ]);
     applyTheme();
     render();

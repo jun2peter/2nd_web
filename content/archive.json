@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "canvas": {
+    "width": 1440,
+    "height": 1800,
+    "background": "#ffffff",
+    "grid": 8,
+    "fontStylesheet": ""
+  },
+  "blocks": []
+}

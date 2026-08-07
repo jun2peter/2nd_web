@@ -82,6 +82,92 @@ content:
               values: [eyes, balance, sun]
       - { name: featured, type: boolean }
 
+  - name: archive
+    label: Archive 자유 배치 캔버스
+    type: file
+    path: content/archive.json
+    format: json
+    fields:
+      - { name: version, label: 데이터 버전, type: number, readonly: true }
+      - name: canvas
+        label: 아트보드 설정
+        type: object
+        fields:
+          - { name: width, label: 너비, type: number }
+          - { name: height, label: 높이, type: number }
+          - { name: background, label: 배경색, type: string }
+          - { name: grid, label: 이동 스냅 간격, type: number }
+          - { name: fontStylesheet, label: 웹폰트 CSS 주소, type: string }
+      - name: blocks
+        label: 배치된 요소
+        type: object
+        list:
+          collapsible:
+            collapsed: true
+            summary: "{name} · {type}"
+        fields:
+          - { name: id, label: 고유 ID, type: string, required: true }
+          - { name: name, label: 레이어 이름, type: string }
+          - name: type
+            label: 요소 종류
+            type: select
+            options:
+              values: [text, image, video, button, shape, marquee]
+          - { name: x, label: X 위치, type: number }
+          - { name: y, label: Y 위치, type: number }
+          - { name: width, label: 너비, type: number }
+          - { name: height, label: 높이, type: number }
+          - { name: z, label: 레이어 순서, type: number }
+          - { name: rotation, label: 회전, type: number }
+          - { name: opacity, label: 투명도, type: number }
+          - { name: content, label: 글자·버튼 내용, type: text }
+          - { name: src, label: 외부 이미지·GIF·영상 링크, type: string }
+          - name: media
+            label: 업로드 이미지·GIF·영상 파일
+            type: file
+            options:
+              categories: [image, video]
+          - { name: alt, label: 이미지·영상 설명, type: string }
+          - { name: href, label: 버튼 링크, type: string }
+          - { name: openNewTab, label: 새 창으로 열기, type: boolean }
+          - { name: fontFamily, label: 폰트, type: string }
+          - { name: fontSize, label: 글자 크기, type: number }
+          - { name: fontWeight, label: 글자 굵기, type: number }
+          - { name: lineHeight, label: 행간, type: number }
+          - { name: letterSpacing, label: 자간, type: number }
+          - name: textAlign
+            label: 글자 정렬
+            type: select
+            options:
+              values: [left, center, right]
+          - { name: color, label: 글자색, type: string }
+          - { name: background, label: 배경색, type: string }
+          - { name: borderColor, label: 선 색, type: string }
+          - { name: borderWidth, label: 선 두께, type: number }
+          - { name: borderRadius, label: 둥근 모서리, type: number }
+          - { name: padding, label: 안쪽 여백, type: number }
+          - name: objectFit
+            label: 이미지 맞춤
+            type: select
+            options:
+              values: [cover, contain, fill]
+          - name: repeat
+            label: 이미지 반복
+            type: select
+            options:
+              values: [no-repeat, repeat, repeat-x, repeat-y]
+          - { name: repeatSize, label: 반복 이미지 크기, type: number }
+          - { name: autoplay, label: 영상 자동재생, type: boolean }
+          - { name: loop, label: 영상 반복, type: boolean }
+          - { name: muted, label: 영상 음소거, type: boolean }
+          - { name: controls, label: 영상 컨트롤 표시, type: boolean }
+          - { name: speed, label: 반복 글자 속도, type: number }
+          - name: direction
+            label: 반복 방향
+            type: select
+            options:
+              values: [left, right]
+
   - name: notes
     label: Research axes
     type: file
