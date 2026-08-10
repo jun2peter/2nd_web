@@ -9,7 +9,7 @@ import {
   normalizeArchiveData,
   resolveArchivePage,
   syncArchiveFontStylesheet,
-} from "./archive-editor.js?v=studio3";
+} from "./archive-editor.js?v=motionlab4";
 
 const app = document.querySelector("#app");
 

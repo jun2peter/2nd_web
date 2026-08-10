@@ -1,10 +1,12 @@
-const DATA_VERSION = 3;
-const STORAGE_KEY = "psj-archive-builder-draft-v3";
-const LEGACY_STORAGE_KEYS = ["psj-archive-builder-draft-v2", "psj-archive-canvas-draft-v1"];
+const DATA_VERSION = 4;
+const STORAGE_KEY = "psj-archive-builder-draft-v4";
+const LEGACY_STORAGE_KEYS = ["psj-archive-builder-draft-v3", "psj-archive-builder-draft-v2", "psj-archive-canvas-draft-v1"];
 const GITHUB_EDIT_URL = "https://github.com/jun2peter/2nd_web/edit/main/content/archive.json";
 const GITHUB_MEDIA_UPLOAD_URL = "https://github.com/jun2peter/2nd_web/upload/main/media";
 
 const BLOCK_TYPES = ["text", "image", "video", "audio", "button", "shape", "line", "marquee", "gallery", "embed", "nav"];
+const MOTION_LAB_TRIGGERS = ["load", "in-view", "hover", "press", "click", "scroll"];
+const MOTION_LAB_ORIGINS = ["center", "top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left", "top-left"];
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 const escapeHTML = (value = "") =>
@@ -30,6 +32,19 @@ const cssColor = (value, fallback = "transparent") => {
   const clean = String(value ?? "").trim();
   return /^[#(),.%\w\s-]+$/.test(clean) ? clean : fallback;
 };
+
+function normalizeEasing(value, fallback = "cubic-bezier(.22,1,.36,1)") {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (["linear", "ease", "ease-in", "ease-out", "ease-in-out", "step-start", "step-end"].includes(raw)) return raw;
+  const bezier = raw.match(/^cubic-bezier\(\s*(-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\s*\)$/);
+  if (bezier) {
+    const values = bezier.slice(1).map(Number);
+    if (values.every(Number.isFinite) && values[0] >= 0 && values[0] <= 1 && values[2] >= 0 && values[2] <= 1) return `cubic-bezier(${values.join(",")})`;
+  }
+  const steps = raw.match(/^steps\(\s*(\d+)\s*,\s*(start|end)\s*\)$/);
+  if (steps) return `steps(${number(steps[1], 1, 1, 100)},${steps[2]})`;
+  return fallback;
+}
 
 const safeId = (value, fallback = "item") => {
   const clean = String(value ?? "").trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -150,6 +165,71 @@ function normalizeAction(action = {}, block = {}) {
   };
 }
 
+function normalizeMotionKeyframe(frame = {}, index = 0) {
+  frame = frame || {};
+  return {
+    id: safeId(frame.id, `kf-${index + 1}`),
+    at: number(frame.at ?? frame.offset, index ? 100 : 0, 0, 100),
+    x: number(frame.x, 0, -5000, 5000),
+    y: number(frame.y, 0, -5000, 5000),
+    scaleX: number(frame.scaleX ?? frame.scale, 1, -10, 10),
+    scaleY: number(frame.scaleY ?? frame.scale, 1, -10, 10),
+    rotate: number(frame.rotate, 0, -3600, 3600),
+    rotateX: number(frame.rotateX, 0, -1440, 1440),
+    rotateY: number(frame.rotateY, 0, -1440, 1440),
+    skewX: number(frame.skewX, 0, -89, 89),
+    skewY: number(frame.skewY, 0, -89, 89),
+    opacity: number(frame.opacity, 1, 0, 1),
+    blur: number(frame.blur, 0, 0, 200),
+    brightness: number(frame.brightness, 1, 0, 5),
+    saturate: number(frame.saturate, 1, 0, 5),
+    hue: number(frame.hue, 0, -720, 720),
+    easing: normalizeEasing(frame.easing, "linear"),
+  };
+}
+
+function neutralMotionKeyframes() {
+  return [normalizeMotionKeyframe({ id: "kf-start", at: 0 }, 0), normalizeMotionKeyframe({ id: "kf-end", at: 100 }, 1)];
+}
+
+function normalizeMotionTimeline(timeline = {}) {
+  timeline = timeline || {};
+  const enabled = Boolean(timeline.enabled);
+  const usedIds = new Set();
+  let keyframes = (Array.isArray(timeline.keyframes) ? timeline.keyframes : [])
+    .slice(0, 32)
+    .map(normalizeMotionKeyframe)
+    .sort((a, b) => a.at - b.at)
+    .map((frame) => {
+      let id = frame.id;
+      let suffix = 2;
+      while (usedIds.has(id)) id = `${frame.id}-${suffix++}`;
+      usedIds.add(id);
+      return { ...frame, id };
+    });
+  if (enabled && !keyframes.length) keyframes = neutralMotionKeyframes();
+  else if (enabled && keyframes.length === 1) {
+    const only = keyframes[0];
+    const requestedId = only.at < 50 ? "kf-end" : "kf-start";
+    const companion = normalizeMotionKeyframe({ id: only.id === requestedId ? `${requestedId}-2` : requestedId, at: only.at < 50 ? 100 : 0 }, only.at < 50 ? 1 : 0);
+    keyframes = only.at < 50 ? [only, companion] : [companion, only];
+  }
+  return {
+    enabled,
+    trigger: MOTION_LAB_TRIGGERS.includes(timeline.trigger) ? timeline.trigger : "load",
+    duration: number(timeline.duration, 1200, 100, 60000),
+    delay: number(timeline.delay, 0, 0, 30000),
+    iterations: number(timeline.iterations, 1, 1, 99),
+    infinite: Boolean(timeline.infinite),
+    direction: ["normal", "reverse", "alternate", "alternate-reverse"].includes(timeline.direction) ? timeline.direction : "normal",
+    fill: ["none", "forwards", "backwards", "both"].includes(timeline.fill) ? timeline.fill : "both",
+    origin: MOTION_LAB_ORIGINS.includes(timeline.origin) ? timeline.origin : "center",
+    perspective: number(timeline.perspective, 800, 0, 5000),
+    once: timeline.once !== false,
+    keyframes,
+  };
+}
+
 function normalizeMotion(motion = {}) {
   motion = motion || {};
   const entrance = motion.entrance || {};
@@ -176,6 +256,89 @@ function normalizeMotion(motion = {}) {
       delay: number(loop.delay, 0, 0, 10000),
       direction: ["normal", "reverse", "alternate"].includes(loop.direction) ? loop.direction : loopPreset === "spin" ? "normal" : "alternate",
     },
+    timeline: normalizeMotionTimeline(motion.timeline),
+  };
+}
+
+const MOTION_LAB_PRESETS = {
+  "fade-up": {
+    label: "Fade up",
+    trigger: "in-view",
+    duration: 850,
+    frames: [{ at: 0, y: 64, opacity: 0, blur: 10, easing: "cubic-bezier(.22,1,.36,1)" }, { at: 100 }],
+  },
+  "reveal-left": {
+    label: "Slide reveal",
+    trigger: "in-view",
+    duration: 900,
+    frames: [{ at: 0, x: -96, opacity: 0, blur: 8, easing: "cubic-bezier(.22,1,.36,1)" }, { at: 100 }],
+  },
+  pop: {
+    label: "Pop",
+    trigger: "click",
+    duration: 620,
+    frames: [{ at: 0, scaleX: .62, scaleY: .62, opacity: 0 }, { at: 72, scaleX: 1.1, scaleY: 1.1, easing: "cubic-bezier(.34,1.56,.64,1)" }, { at: 100 }],
+  },
+  float: {
+    label: "Float",
+    trigger: "load",
+    duration: 3200,
+    infinite: true,
+    frames: [{ at: 0 }, { at: 50, y: -28, rotate: 1.5, easing: "ease-in-out" }, { at: 100 }],
+  },
+  orbit: {
+    label: "Orbit",
+    trigger: "load",
+    duration: 5000,
+    infinite: true,
+    frames: [{ at: 0, x: -34 }, { at: 25, x: 0, y: -34, rotate: 90 }, { at: 50, x: 34, y: 0, rotate: 180 }, { at: 75, x: 0, y: 34, rotate: 270 }, { at: 100, x: -34, y: 0, rotate: 360 }],
+  },
+  spin: {
+    label: "Spin",
+    trigger: "load",
+    duration: 2600,
+    infinite: true,
+    frames: [{ at: 0 }, { at: 100, rotate: 360, easing: "linear" }],
+  },
+  cinematic: {
+    label: "Cinematic",
+    trigger: "in-view",
+    duration: 1400,
+    frames: [{ at: 0, y: 80, scaleX: .92, scaleY: .92, opacity: 0, blur: 28, brightness: .65 }, { at: 65, opacity: 1, blur: 3, brightness: 1.08, easing: "cubic-bezier(.22,1,.36,1)" }, { at: 100 }],
+  },
+  glitch: {
+    label: "Glitch",
+    trigger: "hover",
+    duration: 520,
+    frames: [{ at: 0 }, { at: 18, x: -12, skewX: -5, hue: 45 }, { at: 36, x: 14, y: -4, skewX: 4, hue: -55 }, { at: 58, x: -6, y: 3, opacity: .72, hue: 90 }, { at: 76, x: 5, skewX: -2 }, { at: 100 }],
+  },
+};
+
+function motionLabTransform(frame, perspective = 800) {
+  const depth = perspective > 0 ? `perspective(${perspective}px) ` : "";
+  return `${depth}translate3d(${frame.x}px,${frame.y}px,0) rotateX(${frame.rotateX}deg) rotateY(${frame.rotateY}deg) rotate(${frame.rotate}deg) skewX(${frame.skewX}deg) skewY(${frame.skewY}deg) scale(${frame.scaleX},${frame.scaleY})`;
+}
+
+export function motionLabKeyframes(timeline = {}) {
+  const normalized = normalizeMotionTimeline({ ...timeline, enabled: true });
+  return normalized.keyframes.map((frame) => ({
+    offset: frame.at / 100,
+    transform: motionLabTransform(frame, normalized.perspective),
+    transformOrigin: normalized.origin.replace("-", " "),
+    opacity: frame.opacity,
+    filter: `blur(${frame.blur}px) brightness(${frame.brightness}) saturate(${frame.saturate}) hue-rotate(${frame.hue}deg)`,
+    easing: frame.easing,
+  }));
+}
+
+export function motionLabTiming(timeline = {}, { preview = false, scrub = false } = {}) {
+  const normalized = normalizeMotionTimeline({ ...timeline, enabled: true });
+  return {
+    duration: normalized.duration,
+    delay: scrub ? 0 : normalized.delay,
+    iterations: scrub || preview ? 1 : normalized.infinite ? Infinity : normalized.iterations,
+    direction: scrub ? "normal" : normalized.direction,
+    fill: normalized.fill,
   };
 }
 
@@ -713,8 +876,8 @@ function blockContent(block, data, draft = false, currentPageId = "", editing = 
   return "";
 }
 
-export function archiveBlockMarkup(rawBlock, { data, editing = false, draft = false, pageId = "" } = {}) {
-  const documentData = normalizeArchiveData(data || {});
+export function archiveBlockMarkup(rawBlock, { data, editing = false, draft = false, pageId = "", normalized = false } = {}) {
+  const documentData = normalized ? data : normalizeArchiveData(data || {});
   const block = normalizeBlock(rawBlock);
   if (!block.visible && !editing) return "";
   const action = actionAttributes(block.action, documentData, { draft });
@@ -723,19 +886,22 @@ export function archiveBlockMarkup(rawBlock, { data, editing = false, draft = fa
   let content = blockContent(block, documentData, draft, pageId, editing, Boolean(action && canWrapAction));
   if (action && canWrapAction) content = `<a class="canvas-block__link" ${action} aria-label="${escapeHTML(block.ariaLabel || block.content || block.name)}">${content}</a>`;
   const motion = block.motion;
+  const motionLab = motion.timeline;
   const anchor = block.anchorId || block.id;
   const lightboxSource = block.type === "image" ? safeURL(block.media || block.src, { imageData: true }) : "";
   const lightboxAttributes = block.lightbox ? `data-lightbox ${lightboxSource ? `data-lightbox-src="${escapeHTML(lightboxSource)}"` : ""}` : "";
   const style = `${commonStyle(block)};--entrance-duration:${motion.entrance.duration}ms;--entrance-delay:${motion.entrance.delay}ms;--entrance-easing:${motion.entrance.easing};--hover-duration:${motion.hover.duration}ms;--hover-amount:${motion.hover.amount};--loop-duration:${motion.loop.duration}ms;--loop-delay:${motion.loop.delay}ms;--loop-direction:${motion.loop.direction};`;
   const wrapperSurface = ["image", "video", "audio", "gallery", "embed"].includes(block.type) ? surfaceStyle(block) : "";
   const visitorDraggable = block.publicDraggable && !["video", "audio", "embed"].includes(block.type) && !action && !block.lightbox;
-  return `<article id="${escapeHTML(anchor)}" class="canvas-block canvas-block--${block.type}${editing ? " is-editable" : ""}${block.visible ? "" : " is-hidden-layer"}${block.locked ? " is-locked" : ""}" data-block-id="${escapeHTML(block.id)}" data-entrance="${motion.entrance.preset}" data-trigger="${motion.entrance.trigger}" data-once="${motion.entrance.once}" data-loop="${motion.loop.preset}" data-hover="${motion.hover.preset}" data-parallax="${block.parallax}" data-mouse-parallax="${block.mouseParallax}" ${visitorDraggable ? "data-public-draggable" : ""} ${lightboxAttributes} style="${style}"><div class="canvas-block__entrance"><div class="canvas-block__loop"><div class="canvas-block__hover"><div class="canvas-block__content" style="${visualEffectStyle(block)};${wrapperSurface}">${content}</div></div></div></div>${editing ? '<button class="canvas-block__resize" data-resize type="button" aria-label="크기 조절"></button>' : ""}</article>`;
+  const motionLabData = motionLab.enabled ? `data-motion-lab="${escapeHTML(JSON.stringify(motionLab))}" data-motion-lab-trigger="${motionLab.trigger}"` : "";
+  const motionFocusable = motionLab.enabled && ["click", "press", "hover"].includes(motionLab.trigger) && !action && !["video", "audio", "embed", "nav"].includes(block.type) ? `tabindex="0" ${["click", "press"].includes(motionLab.trigger) ? 'role="button"' : ""}` : "";
+  return `<article id="${escapeHTML(anchor)}" class="canvas-block canvas-block--${block.type}${editing ? " is-editable" : ""}${block.visible ? "" : " is-hidden-layer"}${block.locked ? " is-locked" : ""}" data-block-id="${escapeHTML(block.id)}" data-entrance="${motion.entrance.preset}" data-trigger="${motion.entrance.trigger}" data-once="${motion.entrance.once}" data-loop="${motion.loop.preset}" data-hover="${motion.hover.preset}" data-parallax="${block.parallax}" data-mouse-parallax="${block.mouseParallax}" ${motionLabData} ${motionFocusable} ${visitorDraggable ? "data-public-draggable" : ""} ${lightboxAttributes} style="${style}"><div class="canvas-block__entrance"><div class="canvas-block__timeline"><div class="canvas-block__loop"><div class="canvas-block__hover"><div class="canvas-block__content" style="${visualEffectStyle(block)};${wrapperSurface}">${content}</div></div></div></div></div>${editing ? '<button class="canvas-block__resize" data-resize type="button" aria-label="크기 조절"></button>' : ""}</article>`;
 }
 
 export function archiveCanvasMarkup(source, pageOrId = "", { editing = false, draft = false } = {}) {
   const data = normalizeArchiveData(source);
   const page = typeof pageOrId === "object" ? data.pages.find((item) => item.id === pageOrId.id) || pageOrId : data.pages.find((item) => item.id === pageOrId) || data.pages.find((item) => item.id === data.settings.defaultPageId) || data.pages[0];
-  const blocks = page.blocks.map((block) => archiveBlockMarkup(block, { data, editing, draft, pageId: page.id })).join("");
+  const blocks = page.blocks.map((block) => archiveBlockMarkup(block, { data, editing, draft, pageId: page.id, normalized: true })).join("");
   return `<section class="archive-canvas${editing ? " archive-canvas--editing" : ""}" data-archive-canvas data-page-id="${escapeHTML(page.id)}" style="width:${page.canvas.width}px;height:${page.canvas.height}px;background-color:${page.canvas.background};--canvas-grid:${page.canvas.grid}px">${blocks}${editing && !blocks ? '<div class="archive-canvas__empty">왼쪽에서 요소를 추가하세요 · 빈 캔버스를 누르면 페이지 설정</div>' : ""}</section>`;
 }
 
@@ -785,13 +951,33 @@ function pageInspectorMarkup(data, page) {
     <details class="studio-inspector-section"><summary><span>SEO · 공유</span><small>검색과 링크 미리보기</small></summary><div class="studio-inspector-section__body">${field("브라우저 제목", "page.seo.title", page.seo.title)}${field("검색 설명", "page.seo.description", page.seo.description, "textarea")}${field("공유 이미지", "page.seo.image", page.seo.image)}${field("언어 코드", "page.seo.language", page.seo.language)}${field("검색엔진에서 숨김", "page.seo.noIndex", page.seo.noIndex, "checkbox")}</div></details>`;
 }
 
+function motionLabDockMarkup(page, selectedId = "", selectedFrameId = "", playhead = 0, speed = 1) {
+  const timed = page.blocks.filter((block) => block.motion.timeline.enabled && block.motion.timeline.trigger !== "scroll");
+  const horizon = Math.max(100, ...timed.map((block) => block.motion.timeline.delay + block.motion.timeline.duration));
+  const rows = page.blocks.map((block) => {
+    const timeline = block.motion.timeline;
+    const clipLeft = timeline.trigger === "scroll" ? 0 : timeline.delay / horizon * 100;
+    const clipWidth = timeline.trigger === "scroll" ? 100 : timeline.duration / horizon * 100;
+    const frames = timeline.keyframes.map((frame) => {
+      const position = timeline.trigger === "scroll" ? frame.at : (timeline.delay + frame.at / 100 * timeline.duration) / horizon * 100;
+      return `<button class="motion-lab-dock__key ${block.id === selectedId && frame.id === selectedFrameId ? "is-active" : ""}" data-motion-dock-frame="${escapeHTML(frame.id)}" data-motion-dock-block="${escapeHTML(block.id)}" style="left:${position}%" aria-label="${escapeHTML(block.name)} ${frame.at}% 키프레임" title="${frame.at}%" type="button"></button>`;
+    }).join("");
+    return `<div class="motion-lab-dock__row ${block.id === selectedId ? "is-selected" : ""} ${timeline.enabled ? "has-motion" : ""}"><button class="motion-lab-dock__layer" data-motion-dock-select="${escapeHTML(block.id)}" type="button"><span>${timeline.enabled ? "◆" : "◇"}</span><strong>${escapeHTML(block.name)}</strong><small>${timeline.enabled ? `${timeline.trigger} · ${timeline.keyframes.length} key` : block.type}</small></button><div class="motion-lab-dock__track" data-motion-dock-track="${escapeHTML(block.id)}"><span class="motion-lab-dock__clip ${timeline.trigger === "scroll" ? "is-scroll" : ""}" style="left:${clipLeft}%;width:${clipWidth}%"></span>${timeline.enabled ? frames : `<button data-motion-add-track="${escapeHTML(block.id)}" type="button">＋ 모션</button>`}</div></div>`;
+  }).join("") || '<div class="motion-lab-dock__empty">먼저 페이지에 요소를 추가하세요.</div>';
+  return `<section class="motion-lab-dock" data-motion-lab-dock aria-label="Motion Lab timeline">
+    <header class="motion-lab-dock__header"><div><strong>MOTION LAB</strong><span>레이어별 키프레임 · 0–100%</span></div><div class="motion-lab-dock__transport"><button data-motion-page-restart type="button" aria-label="처음으로">↺</button><button data-motion-page-play type="button" aria-label="모션 재생">▶</button><button data-motion-page-stop type="button" aria-label="모션 정지">■</button><select data-motion-speed aria-label="미리보기 속도"><option value="0.5" ${speed === .5 ? "selected" : ""}>0.5×</option><option value="1" ${speed === 1 ? "selected" : ""}>1×</option><option value="2" ${speed === 2 ? "selected" : ""}>2×</option></select><button data-motion-stagger type="button">순차 등장</button></div></header>
+    <div class="motion-lab-dock__scrubber"><span>0</span><input data-motion-scrub type="range" min="0" max="100" step=".1" value="${playhead}" aria-label="타임라인 재생 위치"><output data-motion-time>${Math.round(playhead)}% · ${Math.round(horizon * playhead / 100)}ms</output></div>
+    <div class="motion-lab-dock__rows" style="--motion-playhead:${playhead}%"><i class="motion-lab-dock__playhead" data-motion-dock-playhead></i>${rows}</div>
+  </section>`;
+}
+
 export function archiveStudioTemplate(source, activePageId = "") {
   const data = normalizeArchiveData(source);
   const page = data.pages.find((item) => item.id === activePageId) || data.pages.find((item) => item.id === data.settings.defaultPageId) || data.pages[0];
   return `<main id="main" class="archive-page archive-page--studio">
     <div class="archive-studio" data-archive-studio data-active-page="${escapeHTML(page.id)}">
       <aside class="archive-studio__left">
-        <div class="archive-studio__brand"><strong>ARCHIVE STUDIO <b>3</b></strong><span>local draft</span></div>
+        <div class="archive-studio__brand"><strong>ARCHIVE STUDIO <b>4</b></strong><span>Motion Lab</span></div>
         <a class="studio-exit" href="?view=archive">← 사이트로 돌아가기</a>
         <section class="studio-panel studio-pages"><div class="studio-panel__head"><div><h2>페이지</h2><small data-page-count>${data.pages.length}개</small></div></div><div data-page-list>${pageListMarkup(data, page.id)}</div><div class="studio-page-create"><button data-action="add-page" type="button">＋ 메뉴 페이지</button><button data-action="add-unlisted-page" type="button">＋ 링크 전용</button></div></section>
         <section class="studio-panel studio-layers"><div class="studio-panel__head"><h2>레이어</h2><small>현재 페이지</small></div><div data-layer-list></div></section>
@@ -805,8 +991,9 @@ export function archiveStudioTemplate(source, activePageId = "") {
         </div></details>
       </aside>
       <section class="archive-studio__center">
-        <header class="archive-studio__topbar"><div class="studio-topbar__context"><strong data-current-page-name>${escapeHTML(page.name)}</strong><span data-current-page-meta>${page.visibility === "listed" ? "메뉴 표시" : page.visibility === "unlisted" ? "링크 전용" : "초안"} · ${page.canvas.width}×${page.canvas.height}</span><small data-save-status aria-live="polite">이 브라우저에 자동 저장됨</small></div><div class="studio-topbar__actions"><button data-action="undo" type="button" title="실행 취소" aria-label="실행 취소">↶</button><button data-action="redo" type="button" title="다시 실행" aria-label="다시 실행">↷</button><select data-zoom aria-label="캔버스 확대"><option value="0.25">25%</option><option value="0.5" selected>50%</option><option value="0.75">75%</option><option value="1">100%</option></select><button data-action="preflight" type="button">검수</button><button data-action="preview" type="button">미리보기</button><button data-action="import" type="button">불러오기</button><button data-action="reset-published" type="button">게시본</button><button data-action="download" type="button">백업</button><button class="studio-publish" data-action="publish" type="button">게시 준비</button></div></header>
+        <header class="archive-studio__topbar"><div class="studio-mode-switch" role="group" aria-label="편집 모드"><button class="is-active" data-studio-mode="design" aria-pressed="true" type="button">Design</button><button data-studio-mode="motion" aria-pressed="false" type="button">Motion</button></div><div class="studio-topbar__context"><strong data-current-page-name>${escapeHTML(page.name)}</strong><span data-current-page-meta>${page.visibility === "listed" ? "메뉴 표시" : page.visibility === "unlisted" ? "링크 전용" : "초안"} · ${page.canvas.width}×${page.canvas.height}</span><small data-save-status aria-live="polite">이 브라우저에 자동 저장됨</small></div><div class="studio-topbar__actions"><button data-action="undo" type="button" title="실행 취소" aria-label="실행 취소">↶</button><button data-action="redo" type="button" title="다시 실행" aria-label="다시 실행">↷</button><select data-zoom aria-label="캔버스 확대"><option value="0.25">25%</option><option value="0.5" selected>50%</option><option value="0.75">75%</option><option value="1">100%</option></select><button data-action="preflight" type="button">검수</button><button data-action="preview" type="button">미리보기</button><button data-action="import" type="button">불러오기</button><button data-action="reset-published" type="button">게시본</button><button data-action="download" type="button">백업</button><button class="studio-publish" data-action="publish" type="button">게시 파일 준비</button></div></header>
         <div class="archive-studio__workspace"><div class="archive-studio__board-sizer"><div class="archive-studio__board">${archiveCanvasMarkup(data, page, { editing: true })}</div></div></div>
+        ${motionLabDockMarkup(page)}
       </section>
       <aside class="archive-studio__inspector" data-inspector>${pageInspectorMarkup(data, page)}</aside>
       <input data-image-picker type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden>
@@ -831,7 +1018,52 @@ function inspectorSection(title, hint, body, { open = false, className = "" } = 
   return `<details class="studio-inspector-section ${className}" ${open ? "open" : ""}><summary><span>${title}</span><small>${hint}</small></summary><div class="studio-inspector-section__body">${body}</div></details>`;
 }
 
-function inspectorMarkup(block, data) {
+function motionTriggerOptions(current) {
+  return option("load", current, "페이지 열림")
+    + option("in-view", current, "화면에 들어올 때")
+    + option("click", current, "클릭할 때")
+    + option("hover", current, "호버 · 터치 누름")
+    + option("press", current, "누르는 동안")
+    + option("scroll", current, "스크롤 진행률 0–100% ");
+}
+
+function motionEasingOptions(current) {
+  return option("linear", current, "Linear")
+    + option("ease-out", current, "Ease out")
+    + option("ease-in", current, "Ease in")
+    + option("ease-in-out", current, "Ease in-out")
+    + option("cubic-bezier(0.22,1,0.36,1)", current, "Smooth out")
+    + option("cubic-bezier(0.34,1.56,0.64,1)", current, "Spring · soft")
+    + option("steps(4,end)", current, "Steps · 4");
+}
+
+function motionLabInspectorMarkup(block, selectedFrameId = "") {
+  const timeline = block.motion.timeline;
+  const selectedIndex = Math.max(0, timeline.keyframes.findIndex((frame) => frame.id === selectedFrameId));
+  const frame = timeline.keyframes[selectedIndex] || null;
+  const presets = Object.entries(MOTION_LAB_PRESETS).map(([id, preset]) => `<button data-motion-preset="${id}" type="button">${escapeHTML(preset.label)}</button>`).join("");
+  const timeControls = timeline.trigger === "scroll"
+    ? `<div class="studio-callout motion-lab-callout"><strong>스크롤 진행률에 직접 연결</strong><p>요소가 화면 아래에서 위로 지나가는 구간을 0–100%로 사용합니다. 시간·지연·반복 설정은 적용되지 않아요.</p></div>`
+    : `<div class="studio-checks">${field("무한 반복", "motion.timeline.infinite", timeline.infinite, "checkbox")}${timeline.trigger === "in-view" && !timeline.infinite ? field("한 번만 재생", "motion.timeline.once", timeline.once, "checkbox") : ""}</div><div class="studio-fields studio-fields--two">${field("시간 (ms)", "motion.timeline.duration", timeline.duration, "number")}${field("지연 (ms)", "motion.timeline.delay", timeline.delay, "number")}${field("반복 횟수", "motion.timeline.iterations", timeline.iterations, "number")}${field("방향", "motion.timeline.direction", timeline.direction, "select", option("normal", timeline.direction, "정방향") + option("reverse", timeline.direction, "역방향") + option("alternate", timeline.direction, "왕복") + option("alternate-reverse", timeline.direction, "역방향 왕복"))}${field("완료 상태", "motion.timeline.fill", timeline.fill, "select", option("both", timeline.fill, "처음·끝 유지") + option("forwards", timeline.fill, "끝 유지") + option("none", timeline.fill, "원래대로"))}</div>`;
+  const controls = `<div class="motion-lab-presets">${presets}</div>
+    <div class="studio-checks">${field("Motion Lab 사용", "motion.timeline.enabled", timeline.enabled, "checkbox")}</div>
+    ${field("시작 조건", "motion.timeline.trigger", timeline.trigger, "select", motionTriggerOptions(timeline.trigger))}${timeControls}
+    <div class="studio-fields studio-fields--two">${field("변형 기준점", "motion.timeline.origin", timeline.origin, "select", MOTION_LAB_ORIGINS.map((item) => option(item, timeline.origin, item.replaceAll("-", " "))).join(""))}${field("3D 원근", "motion.timeline.perspective", timeline.perspective, "number")}</div>
+    <div class="motion-lab-inspector-actions"><button data-motion-preview type="button">▶ 선택 모션 재생</button><button data-motion-stop type="button">■ 정지</button><button data-motion-empty type="button">＋ 빈 모션</button></div>`;
+  if (!timeline.enabled || !frame) return `${controls}<div class="studio-callout motion-lab-callout"><strong>프리셋 또는 빈 모션으로 시작</strong><p>모션 모드의 하단 타임라인에서 키프레임을 고르고 캔버스와 숫자로 정밀하게 조절할 수 있어요.</p></div>`;
+  const dots = timeline.keyframes.map((item, index) => `<button class="motion-lab-key-dot ${item.id === frame.id ? "is-active" : ""}" data-motion-frame-select="${escapeHTML(item.id)}" style="left:${item.at}%" aria-label="${item.at}% 키프레임" title="${item.at}%" type="button"><span>${index + 1}</span></button>`).join("");
+  const framePath = `motion.timeline.keyframes.${selectedIndex}`;
+  return `${controls}
+    <div class="motion-lab-mini-timeline"><div class="motion-lab-mini-ruler"><span>0</span><span>50</span><span>100%</span></div><div class="motion-lab-mini-track"><i data-motion-inspector-playhead style="left:${frame.at}%"></i>${dots}</div></div>
+    <div class="motion-lab-frame-head"><div><span>KEYFRAME ${selectedIndex + 1}</span><strong>${frame.at}%</strong></div><div><button data-motion-frame-duplicate type="button">복제</button><button data-motion-frame-delete type="button" ${timeline.keyframes.length <= 2 ? "disabled" : ""}>삭제</button></div></div>
+    <label class="motion-lab-range"><span>타임라인 위치 <output data-motion-at-output>${frame.at}%</output></span><input data-field="${framePath}.at" type="range" min="0" max="100" step="1" value="${frame.at}"></label>
+    <p class="studio-insert__label">TRANSFORM</p><div class="studio-fields studio-fields--two">${field("X 이동", `${framePath}.x`, frame.x, "number")}${field("Y 이동", `${framePath}.y`, frame.y, "number")}${field("가로 배율", `${framePath}.scaleX`, frame.scaleX, "number")}${field("세로 배율", `${framePath}.scaleY`, frame.scaleY, "number")}${field("회전 Z", `${framePath}.rotate`, frame.rotate, "number")}${field("회전 X", `${framePath}.rotateX`, frame.rotateX, "number")}${field("회전 Y", `${framePath}.rotateY`, frame.rotateY, "number")}${field("기울기 X", `${framePath}.skewX`, frame.skewX, "number")}${field("기울기 Y", `${framePath}.skewY`, frame.skewY, "number")}</div>
+    <p class="studio-insert__label">APPEARANCE</p><div class="studio-fields studio-fields--two">${field("투명도", `${framePath}.opacity`, frame.opacity, "number")}${field("블러", `${framePath}.blur`, frame.blur, "number")}${field("밝기", `${framePath}.brightness`, frame.brightness, "number")}${field("채도", `${framePath}.saturate`, frame.saturate, "number")}${field("색상 회전", `${framePath}.hue`, frame.hue, "number")}</div>
+    ${field("이 프레임 뒤 이징", `${framePath}.easing`, frame.easing, "select", motionEasingOptions(frame.easing))}
+    <div class="motion-lab-inspector-actions motion-lab-inspector-actions--frames"><button data-motion-frame-add type="button">＋ 키프레임</button><button data-motion-frame-copy type="button">현재 값으로 새 프레임</button></div>`;
+}
+
+function inspectorMarkup(block, data, selectedFrameId = "", motionMode = false) {
   const mediaFields = block.type === "image" ? `
     ${field("이미지·GIF 링크", "src", block.src, "url")}${field("업로드 파일 경로", "media", block.media)}<div class="studio-button-row"><button class="inspector-file" data-action="pick-image" type="button">작은 파일 바로 넣기</button><button class="inspector-file" data-action="upload-media" type="button">GitHub에 업로드 ↗</button></div>
     ${field("설명(alt)", "alt", block.alt)}${field("장식 이미지", "decorative", block.decorative, "checkbox")}
@@ -873,13 +1105,16 @@ function inspectorMarkup(block, data) {
   const styleBody = `<div class="studio-fields studio-fields--two">${field("글자색", "color", block.color)}${field("배경/그라디언트", "background", block.background)}${field("선 색", "borderColor", block.borderColor)}${field("선 두께", "borderWidth", block.borderWidth, "number")}${field("둥근 모서리", "borderRadius", block.borderRadius, "number")}${field("안쪽 여백", "padding", block.padding, "number")}${field("블러", "blur", block.blur, "number")}${field("흑백", "grayscale", block.grayscale, "number")}</div>${field("블렌드", "blendMode", block.blendMode, "select", ["normal", "multiply", "screen", "overlay", "difference", "exclusion", "color-burn", "color-dodge"].map((item) => option(item, block.blendMode)).join(""))}<div class="studio-fields studio-fields--two">${field("그림자 X", "shadowX", block.shadowX, "number")}${field("그림자 Y", "shadowY", block.shadowY, "number")}${field("그림자 번짐", "shadowBlur", block.shadowBlur, "number")}${field("그림자 색", "shadowColor", block.shadowColor)}</div>`;
   const visitorDragField = ["video", "audio", "embed"].includes(block.type) ? "" : field("방문자가 드래그", "publicDraggable", block.publicDraggable, "checkbox");
   const motionBody = `${field("등장", "motion.entrance.preset", block.motion.entrance.preset, "select", ["none", "fade", "rise", "fall", "slide-left", "slide-right", "scale", "blur", "rotate"].map((item) => option(item, block.motion.entrance.preset)).join(""))}<div class="studio-fields studio-fields--two">${field("트리거", "motion.entrance.trigger", block.motion.entrance.trigger, "select", option("load", block.motion.entrance.trigger, "페이지 열림") + option("scroll", block.motion.entrance.trigger, "스크롤 진입"))}${field("시간(ms)", "motion.entrance.duration", block.motion.entrance.duration, "number")}${field("지연(ms)", "motion.entrance.delay", block.motion.entrance.delay, "number")}${field("호버", "motion.hover.preset", block.motion.hover.preset, "select", ["none", "lift", "scale", "tilt", "glow", "invert", "fade"].map((item) => option(item, block.motion.hover.preset)).join(""))}${field("반복", "motion.loop.preset", block.motion.loop.preset, "select", ["none", "float", "pulse", "spin", "bounce", "sway", "breathe"].map((item) => option(item, block.motion.loop.preset)).join(""))}${field("반복 시간(ms)", "motion.loop.duration", block.motion.loop.duration, "number")}${field("반복 방향", "motion.loop.direction", block.motion.loop.direction, "select", option("normal", block.motion.loop.direction, "정방향") + option("reverse", block.motion.loop.direction, "역방향") + option("alternate", block.motion.loop.direction, "왕복"))}${field("스크롤 패럴랙스", "parallax", block.parallax, "number")}${field("마우스 패럴랙스", "mouseParallax", block.mouseParallax, "number")}</div><div class="studio-checks">${field("스크롤 등장 한 번만", "motion.entrance.once", block.motion.entrance.once, "checkbox")}${visitorDragField}</div>`;
+  const motionLabSection = inspectorSection("MOTION LAB", "키프레임 · 타임라인 · 트리거", motionLabInspectorMarkup(block, selectedFrameId), { open: motionMode || block.motion.timeline.enabled, className: "studio-inspector-section--motion-lab" });
   return `<div class="inspector-head"><div><span>${escapeHTML(block.type)}</span><strong>${escapeHTML(block.name)}</strong></div><button data-action="delete" type="button">삭제</button></div>
+    ${motionMode ? motionLabSection : ""}
     ${inspectorSection("내용", "텍스트 · 파일 · 데이터", contentBody, { open: true })}
     ${playbackFields ? inspectorSection(block.type === "nav" ? "메뉴 구성" : "재생 방식", "먼저 동작을 선택하세요", playbackFields, { open: true, className: "studio-inspector-section--accent" }) : ""}
     ${inspectorSection("클릭 동작", "페이지 · 링크 · 다운로드", actionBody, { open: actionAllowed && block.action.type !== "none" })}
     ${inspectorSection("위치 · 크기", "레이어와 아트보드 좌표", layoutBody, { open: true })}
     ${inspectorSection("모양", "색상 · 테두리 · 효과", styleBody)}
-    ${inspectorSection("애니메이션", "등장 · 호버 · 반복", motionBody)}`;
+    ${inspectorSection("빠른 애니메이션", "등장 · 호버 · 반복", motionBody)}
+    ${motionMode ? "" : motionLabSection}`;
 }
 
 function setPath(target, path, value) {
@@ -976,6 +1211,22 @@ function runPreflight(data) {
       if (block.publicDraggable && ["video", "audio", "embed"].includes(block.type)) warnings.push(`${page.name} / ${block.name}: 미디어 조작과 충돌해 방문자 드래그가 사용되지 않음`);
       if (block.publicDraggable && block.lightbox) warnings.push(`${page.name} / ${block.name}: 라이트박스와 방문자 드래그를 함께 쓸 수 없어 라이트박스가 우선됨`);
       if (block.lightbox && action.type !== "none") warnings.push(`${page.name} / ${block.name}: 클릭 목적지와 라이트박스를 함께 켜서 클릭 목적지가 우선됨`);
+      const timeline = block.motion.timeline;
+      if (timeline.enabled) {
+        const clickLike = ["click", "press"].includes(timeline.trigger);
+        const interactiveMedia = ["video", "audio"].includes(block.type) && block.playbackMode !== "link" || block.type === "embed" && block.embedMode !== "link";
+        if (clickLike && usesAction(block)) warnings.push(`${page.name} / ${block.name}: Motion Lab ${timeline.trigger} 모션과 페이지·링크 이동이 겹쳐 모션을 보기 전에 이동할 수 있음`);
+        if (clickLike && block.type === "nav") warnings.push(`${page.name} / ${block.name}: 페이지 메뉴의 클릭과 Motion Lab ${timeline.trigger} 모션이 겹침 · 화면 진입이나 페이지 열림 트리거 권장`);
+        if (clickLike && interactiveMedia) warnings.push(`${page.name} / ${block.name}: Motion Lab ${timeline.trigger} 모션이 미디어 조작과 겹침 · 화면 진입이나 페이지 열림 트리거 권장`);
+        if (clickLike && block.lightbox) warnings.push(`${page.name} / ${block.name}: Motion Lab ${timeline.trigger} 모션과 크게 보기가 같은 클릭을 사용함`);
+        if (clickLike && block.publicDraggable) warnings.push(`${page.name} / ${block.name}: Motion Lab ${timeline.trigger} 모션과 방문자 드래그가 같은 포인터를 사용함`);
+        if (timeline.trigger === "hover" && interactiveMedia) warnings.push(`${page.name} / ${block.name}: 호버 모션과 미디어 컨트롤이 겹칠 수 있음 · 터치에서는 누르는 동안으로 자동 대체됨`);
+        if (timeline.trigger === "scroll" && page.canvas.height < 1000) warnings.push(`${page.name} / ${block.name}: 스크롤 진행 모션에 비해 페이지 길이가 짧아 전체 구간이 빠르게 지나갈 수 있음`);
+        if (timeline.keyframes.some((frame) => frame.blur > 40)) warnings.push(`${page.name} / ${block.name}: 큰 키프레임 블러는 저사양 기기에서 느릴 수 있음`);
+        const flashes = timeline.keyframes.slice(1).filter((frame, index) => Math.abs(frame.opacity - timeline.keyframes[index].opacity) > .65 || Math.abs(frame.brightness - timeline.keyframes[index].brightness) > 1.5).length;
+        if (flashes / Math.max(.1, timeline.duration / 1000) > 3) warnings.push(`${page.name} / ${block.name}: 초당 3회가 넘는 밝기·투명도 변화는 발작 위험이 있어 속도를 낮추거나 키프레임을 줄이세요`);
+        if (timeline.keyframes.every((frame) => frame.x === 0 && frame.y === 0 && frame.scaleX === 1 && frame.scaleY === 1 && frame.rotate === 0 && frame.rotateX === 0 && frame.rotateY === 0 && frame.skewX === 0 && frame.skewY === 0 && frame.opacity === 1 && frame.blur === 0 && frame.brightness === 1 && frame.saturate === 1 && frame.hue === 0)) warnings.push(`${page.name} / ${block.name}: Motion Lab이 켜져 있지만 키프레임 변화가 없음`);
+      }
       if (action.type === "page") {
         const target = data.pages.find((item) => item.id === action.pageId);
         if (!target) warnings.push(`${page.name} / ${block.name}: 사라진 페이지로 연결됨`);
@@ -991,6 +1242,7 @@ function runPreflight(data) {
   const hasContinuousMotion = data.pages.some((page) => page.blocks.some((block) => block.visible && (
     block.type === "marquee"
     || block.motion.loop.preset !== "none"
+    || (block.motion.timeline.enabled && block.motion.timeline.infinite && block.motion.timeline.trigger !== "scroll")
     || (["video", "audio"].includes(block.type) && ["autoplay", "in-view"].includes(block.playbackMode))
     || (block.type === "gallery" && block.galleryMode === "slideshow" && block.galleryItems.length > 1)
     || (block.type === "image" && block.gifPlayback === "auto" && isGIFSource(block.media || block.src))
@@ -1036,6 +1288,183 @@ export function bindArchiveViewer(source, pageOrId = "") {
       cleanups.push(() => observer.disconnect());
     } else scrollNodes.forEach(reveal);
   }
+
+  const motionLabControllers = [];
+  const scrollMotionControllers = [];
+  let motionLabScrollFrame = 0;
+  const playFromStart = (controller) => {
+    if (paused || !controller.animation) return false;
+    try { controller.animation.cancel(); controller.animation.play(); controller.played = true; return true; }
+    catch (error) { console.warn("Motion Lab animation could not play.", error); return false; }
+  };
+  const stopToBase = (controller) => {
+    if (!controller.animation) return;
+    controller.wasRunning = false;
+    controller.offscreenRunning = false;
+    try { controller.animation.cancel(); } catch (error) { console.warn("Motion Lab animation could not reset.", error); }
+  };
+  const updateMotionLabScroll = () => {
+    motionLabScrollFrame = 0;
+    if (paused || reduced) return;
+    scrollMotionControllers.forEach((controller) => {
+      const rect = controller.node.getBoundingClientRect();
+      const start = innerHeight * .9;
+      const end = innerHeight * .1 - rect.height;
+      const progress = Math.min(1, Math.max(0, (start - rect.top) / Math.max(1, start - end)));
+      controller.progress = progress;
+      controller.animation.currentTime = progress * controller.timeline.duration;
+    });
+  };
+  const scheduleMotionLabScroll = () => {
+    if (!motionLabScrollFrame) motionLabScrollFrame = requestAnimationFrame(updateMotionLabScroll);
+  };
+
+  if (!reduced && typeof Element !== "undefined" && Element.prototype.animate) {
+    canvas.querySelectorAll("[data-motion-lab]").forEach((node) => {
+      let timeline;
+      try { timeline = normalizeMotionTimeline(JSON.parse(node.dataset.motionLab || "{}")); }
+      catch (error) { console.warn("Motion Lab data could not be read.", error); return; }
+      if (!timeline.enabled || timeline.keyframes.length < 2) return;
+      const target = node.querySelector(".canvas-block__timeline");
+      if (!target) return;
+      const scrub = timeline.trigger === "scroll";
+      let animation;
+      try {
+        animation = target.animate(motionLabKeyframes(timeline), motionLabTiming(timeline, { scrub }));
+        animation.pause();
+        if (["hover", "press", "click"].includes(timeline.trigger)) animation.cancel();
+      } catch (error) { console.warn("Motion Lab animation could not be created.", error); return; }
+      const controller = { node, target, timeline, animation, played: false, active: false, inViewport: true, wasRunning: false, offscreenRunning: false, progress: 0 };
+      motionLabControllers.push(controller);
+      cleanups.push(() => animation.cancel());
+
+      if (timeline.trigger === "load" && timeline.infinite && "IntersectionObserver" in window) {
+        animation.play(); controller.played = true;
+        const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+          controller.active = entry.isIntersecting;
+          controller.inViewport = entry.isIntersecting;
+          if (entry.isIntersecting) {
+            if (!paused && (!controller.played || controller.offscreenRunning || controller.wasRunning || animation.playState === "paused")) {
+              animation.play(); controller.played = true; controller.offscreenRunning = false; controller.wasRunning = false;
+            }
+          } else {
+            controller.offscreenRunning ||= controller.wasRunning || ["running", "pending"].includes(animation.playState);
+            if (["running", "pending"].includes(animation.playState)) animation.pause();
+          }
+        }), { threshold: .01, rootMargin: "10% 0px" });
+        observer.observe(node);
+        cleanups.push(() => observer.disconnect());
+      } else if (timeline.trigger === "load") { animation.play(); controller.played = true; }
+      else if (timeline.trigger === "in-view") {
+        if ("IntersectionObserver" in window) {
+          const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+            controller.active = entry.isIntersecting;
+            controller.inViewport = entry.isIntersecting;
+            if (entry.isIntersecting) {
+              if (timeline.infinite) {
+                if (!paused && (controller.offscreenRunning || !controller.played || animation.playState === "paused")) {
+                  if (!controller.played) playFromStart(controller);
+                  else animation.play();
+                  controller.offscreenRunning = false;
+                }
+              } else if (!timeline.once || !controller.played) {
+                const started = playFromStart(controller);
+                if (timeline.once && started) observer.unobserve(node);
+              }
+            } else if (timeline.infinite) {
+              controller.offscreenRunning ||= controller.wasRunning || ["running", "pending"].includes(animation.playState);
+              if (["running", "pending"].includes(animation.playState)) animation.pause();
+            } else if (!timeline.once) stopToBase(controller);
+          }), { threshold: .12, rootMargin: "0px 0px -6%" });
+          observer.observe(node);
+          cleanups.push(() => observer.disconnect());
+        } else playFromStart(controller);
+      } else if (timeline.trigger === "hover") {
+        let activePointer = null;
+        const enter = (event) => {
+          if (event?.pointerId != null) { activePointer = event.pointerId; node.setPointerCapture?.(event.pointerId); }
+          controller.active = true; playFromStart(controller);
+        };
+        const leave = (event) => {
+          if (activePointer != null && event?.pointerId != null && event.pointerId !== activePointer) return;
+          if (activePointer != null) node.releasePointerCapture?.(activePointer);
+          activePointer = null; controller.active = false; stopToBase(controller);
+        };
+        const coarse = matchMedia("(pointer: coarse)").matches;
+        if (coarse) {
+          node.addEventListener("pointerdown", enter); addEventListener("pointerup", leave); addEventListener("pointercancel", leave);
+          cleanups.push(() => { node.removeEventListener("pointerdown", enter); removeEventListener("pointerup", leave); removeEventListener("pointercancel", leave); });
+        } else {
+          node.addEventListener("pointerenter", enter); node.addEventListener("pointerleave", leave);
+          node.addEventListener("focusin", enter); node.addEventListener("focusout", leave);
+          cleanups.push(() => { node.removeEventListener("pointerenter", enter); node.removeEventListener("pointerleave", leave); node.removeEventListener("focusin", enter); node.removeEventListener("focusout", leave); });
+        }
+      } else if (timeline.trigger === "press") {
+        let activePointer = null;
+        const down = (event) => {
+          if (event?.pointerId != null) { activePointer = event.pointerId; node.setPointerCapture?.(event.pointerId); }
+          controller.active = true; playFromStart(controller);
+        };
+        const up = (event) => {
+          if (activePointer != null && event?.pointerId != null && event.pointerId !== activePointer) return;
+          if (activePointer != null) node.releasePointerCapture?.(activePointer);
+          activePointer = null; controller.active = false; stopToBase(controller);
+        };
+        const isNestedControl = (event) => event.target !== node && Boolean(event.target.closest?.("a,button,input,select,textarea,video,audio,iframe"));
+        const keydown = (event) => { if (!isNestedControl(event) && ["Enter", " "].includes(event.key)) { event.preventDefault(); down(); } };
+        const keyup = (event) => { if (!isNestedControl(event) && ["Enter", " "].includes(event.key)) up(); };
+        node.addEventListener("pointerdown", down); addEventListener("pointerup", up); addEventListener("pointercancel", up); node.addEventListener("keydown", keydown); node.addEventListener("keyup", keyup);
+        cleanups.push(() => { node.removeEventListener("pointerdown", down); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); node.removeEventListener("keydown", keydown); node.removeEventListener("keyup", keyup); });
+      } else if (timeline.trigger === "click") {
+        const click = () => playFromStart(controller);
+        const keydown = (event) => {
+          const nestedControl = event.target !== node && event.target.closest?.("a,button,input,select,textarea,video,audio,iframe");
+          if (!nestedControl && ["Enter", " "].includes(event.key)) { event.preventDefault(); playFromStart(controller); }
+        };
+        node.addEventListener("click", click);
+        node.addEventListener("keydown", keydown);
+        cleanups.push(() => { node.removeEventListener("click", click); node.removeEventListener("keydown", keydown); });
+        if (timeline.infinite && "IntersectionObserver" in window) {
+          const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+            controller.inViewport = entry.isIntersecting;
+            if (!entry.isIntersecting) {
+              controller.offscreenRunning ||= controller.wasRunning || ["running", "pending"].includes(animation.playState);
+              if (["running", "pending"].includes(animation.playState)) animation.pause();
+            } else if (!paused && controller.offscreenRunning) {
+              animation.play(); controller.offscreenRunning = false; controller.wasRunning = false;
+            }
+          }), { threshold: .01, rootMargin: "10% 0px" });
+          observer.observe(node);
+          cleanups.push(() => observer.disconnect());
+        }
+      } else if (timeline.trigger === "scroll") scrollMotionControllers.push(controller);
+    });
+    if (scrollMotionControllers.length) {
+      addEventListener("scroll", scheduleMotionLabScroll, { passive: true });
+      addEventListener("resize", scheduleMotionLabScroll, { passive: true });
+      updateMotionLabScroll();
+      cleanups.push(() => { removeEventListener("scroll", scheduleMotionLabScroll); removeEventListener("resize", scheduleMotionLabScroll); if (motionLabScrollFrame) cancelAnimationFrame(motionLabScrollFrame); });
+    }
+  }
+
+  const pauseMotionLab = () => motionLabControllers.forEach((controller) => {
+    controller.wasRunning = controller.animation.playState === "running";
+    if (["running", "pending"].includes(controller.animation.playState)) controller.animation.pause();
+  });
+  const resumeMotionLab = () => {
+    motionLabControllers.forEach((controller) => {
+      const trigger = controller.timeline.trigger;
+      if (trigger === "scroll") return;
+      if (["in-view", "hover", "press"].includes(trigger)) {
+        if (controller.active) {
+          if (!controller.played) playFromStart(controller);
+          else controller.animation.play();
+        }
+      } else if (controller.wasRunning && (!controller.timeline.infinite || controller.inViewport)) controller.animation.play();
+      controller.wasRunning = false;
+    });
+    updateMotionLabScroll();
+  };
 
   canvas.querySelectorAll("[data-archive-back]").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); history.back(); }));
 
@@ -1253,7 +1682,8 @@ export function bindArchiveViewer(source, pageOrId = "") {
       canvas.querySelectorAll("[data-gif-shell]").forEach((shell) => paused ? shell._archivePauseGIF?.() : shell._archiveResumeGIF?.());
       if (paused) canvas.querySelectorAll("[data-embed-shell]").forEach((shell) => shell._archivePauseEmbed?.());
       if (paused) motionBlocks.forEach((node) => { node.style.setProperty("--parallax-x", "0px"); node.style.setProperty("--parallax-y", "0px"); });
-      else updateParallax();
+      if (paused) pauseMotionLab();
+      else { updateParallax(); resumeMotionLab(); }
     };
     motionToggle.addEventListener("click", toggle); cleanups.push(() => motionToggle.removeEventListener("click", toggle));
   }
@@ -1292,6 +1722,14 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   let saveWarningShown = false;
   let activePageId = data.pages.some((page) => page.id === initialPageId) ? initialPageId : studio.dataset.activePage || data.settings.defaultPageId;
   let selectedId = "";
+  let selectedMotionFrameId = "";
+  let studioMode = "design";
+  let motionPlayhead = 0;
+  let motionPreviewSpeed = 1;
+  let motionPreviewMode = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduced" : "full";
+  let studioMotionAnimations = [];
+  let studioMotionFrame = 0;
+  let disposed = false;
   let drag = null;
   let zoom = number(studio.querySelector("[data-zoom]")?.value, 0.5, 0.1, 2);
   let historyStack = [JSON.stringify(data)];
@@ -1300,7 +1738,151 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   function currentPage() { return data.pages.find((page) => page.id === activePageId) || data.pages[0]; }
   const canvas = () => studio.querySelector("[data-archive-canvas]");
   const selected = () => currentPage()?.blocks.find((block) => block.id === selectedId);
+  const selectedTimeline = () => selected()?.motion.timeline;
+  const selectedMotionFrame = () => {
+    const timeline = selectedTimeline();
+    if (!timeline?.keyframes.length) return null;
+    const frame = timeline.keyframes.find((item) => item.id === selectedMotionFrameId) || timeline.keyframes[0];
+    selectedMotionFrameId = frame.id;
+    return frame;
+  };
+  const motionHorizon = () => Math.max(100, ...currentPage().blocks.filter((block) => block.motion.timeline.enabled && block.motion.timeline.trigger !== "scroll").map((block) => block.motion.timeline.delay + block.motion.timeline.duration));
   const status = (message) => { const node = studio.querySelector("[data-save-status]"); if (node) node.textContent = message; };
+
+  const clearStudioMotion = () => {
+    if (studioMotionFrame) cancelAnimationFrame(studioMotionFrame);
+    studioMotionFrame = 0;
+    studioMotionAnimations.forEach((animation) => { try { animation.cancel(); } catch (error) { console.warn("Studio motion preview could not stop.", error); } });
+    studioMotionAnimations = [];
+  };
+
+  const previewFrames = (timeline) => {
+    const frames = motionLabKeyframes(timeline);
+    if (motionPreviewMode !== "reduced") return frames;
+    return frames.map((frame) => ({ offset: frame.offset, opacity: frame.opacity, easing: frame.easing }));
+  };
+
+  const updateMotionTransport = (progress) => {
+    if (disposed) return;
+    motionPlayhead = number(progress, 0, 0, 100);
+    const dock = studio.querySelector("[data-motion-lab-dock]");
+    dock?.querySelector("[data-motion-scrub]")?.setAttribute("value", String(motionPlayhead));
+    const scrub = dock?.querySelector("[data-motion-scrub]");
+    if (scrub) scrub.value = String(motionPlayhead);
+    const output = dock?.querySelector("[data-motion-time]");
+    const horizon = motionHorizon();
+    if (output) output.textContent = `${Math.round(motionPlayhead)}% · ${Math.round(horizon * motionPlayhead / 100)}ms`;
+    const rows = dock?.querySelector(".motion-lab-dock__rows");
+    rows?.style.setProperty("--motion-playhead", `${motionPlayhead}%`);
+    const playhead = dock?.querySelector("[data-motion-dock-playhead]");
+    const track = dock?.querySelector(".motion-lab-dock__track");
+    if (playhead && track && rows) rows.style.setProperty("--motion-playhead-left", `${track.offsetLeft + track.clientWidth * motionPlayhead / 100}px`);
+  };
+
+  const scrubStudioMotion = (progress = motionPlayhead) => {
+    if (disposed) return;
+    clearStudioMotion();
+    updateMotionTransport(progress);
+    if (studioMode !== "motion" || motionPreviewMode === "off" || typeof Element === "undefined" || !Element.prototype.animate) return;
+    currentPage().blocks.forEach((block) => {
+      const timeline = block.motion.timeline;
+      if (!timeline.enabled || timeline.keyframes.length < 2) return;
+      const target = canvas()?.querySelector(`[data-block-id="${CSS.escape(block.id)}"] .canvas-block__timeline`);
+      if (!target) return;
+      try {
+        const animation = target.animate(previewFrames(timeline), motionLabTiming(timeline, { scrub: true }));
+        const globalTime = motionHorizon() * motionPlayhead / 100;
+        const localTime = timeline.trigger === "scroll" ? timeline.duration * motionPlayhead / 100 : Math.min(timeline.duration, Math.max(0, globalTime - timeline.delay));
+        animation.pause(); animation.currentTime = localTime;
+        studioMotionAnimations.push(animation);
+      } catch (error) { console.warn("Studio Motion Lab scrub could not render.", error); }
+    });
+  };
+
+  const playStudioMotion = ({ onlySelected = false, restart = true } = {}) => {
+    if (disposed) return;
+    clearStudioMotion();
+    if (motionPreviewMode === "off") { status("모션 미리보기가 꺼져 있어요"); return; }
+    const blocks = (onlySelected ? [selected()] : currentPage().blocks).filter((block) => block?.motion.timeline.enabled && block.motion.timeline.keyframes.length > 1);
+    if (!blocks.length) { status("재생할 Motion Lab 트랙이 없어요"); return; }
+    const startAt = restart ? 0 : motionPlayhead;
+    let total = 100;
+    blocks.forEach((block) => {
+      const timeline = block.motion.timeline;
+      const target = canvas()?.querySelector(`[data-block-id="${CSS.escape(block.id)}"] .canvas-block__timeline`);
+      if (!target) return;
+      const duration = timeline.duration / motionPreviewSpeed;
+      const delay = timeline.delay / motionPreviewSpeed;
+      total = Math.max(total, duration + delay);
+      try {
+        const animation = target.animate(previewFrames(timeline), { ...motionLabTiming(timeline, { preview: true }), duration, delay });
+        studioMotionAnimations.push(animation);
+      } catch (error) { console.warn("Studio Motion Lab preview could not play.", error); }
+    });
+    if (!restart) studioMotionAnimations.forEach((animation) => { animation.currentTime = total * startAt / 100; });
+    const started = performance.now() - total * startAt / 100;
+    const tick = (now) => {
+      if (disposed) return;
+      const progress = Math.min(100, (now - started) / total * 100);
+      updateMotionTransport(progress);
+      if (progress < 100 && studioMotionAnimations.some((animation) => animation.playState !== "finished")) studioMotionFrame = requestAnimationFrame(tick);
+      else studioMotionFrame = 0;
+    };
+    studioMotionFrame = requestAnimationFrame(tick);
+    status(onlySelected ? "선택한 모션 재생 중" : "페이지 모션 재생 중");
+  };
+
+  const applyMotionPreset = (block, presetId, delay = 0) => {
+    const preset = MOTION_LAB_PRESETS[presetId];
+    if (!block || !preset) return;
+    block.motion.timeline = normalizeMotionTimeline({
+      enabled: true,
+      trigger: preset.trigger,
+      duration: preset.duration,
+      delay,
+      infinite: Boolean(preset.infinite),
+      iterations: 1,
+      direction: "normal",
+      fill: "both",
+      origin: "center",
+      perspective: 800,
+      once: true,
+      keyframes: preset.frames.map((frame) => ({ ...frame, id: uid("kf") })),
+    });
+    if (preset.infinite) data.settings.showMotionToggle = true;
+    selectedMotionFrameId = block.motion.timeline.keyframes[0]?.id || "";
+    motionPlayhead = block.motion.timeline.keyframes[0]?.at || 0;
+  };
+
+  const enableEmptyMotion = (block) => {
+    if (!block) return;
+    const previousFrameId = selectedMotionFrameId;
+    block.motion.timeline = normalizeMotionTimeline({ ...block.motion.timeline, enabled: true, keyframes: block.motion.timeline.keyframes.length ? block.motion.timeline.keyframes : neutralMotionKeyframes().map((frame) => ({ ...frame, id: uid("kf") })) });
+    selectedMotionFrameId = block.motion.timeline.keyframes.some((frame) => frame.id === previousFrameId) ? previousFrameId : block.motion.timeline.keyframes[0]?.id || "";
+    motionPlayhead = block.motion.timeline.keyframes.find((frame) => frame.id === selectedMotionFrameId)?.at ?? 0;
+  };
+
+  const addMotionKeyframe = ({ copyCurrent = false } = {}) => {
+    const block = selected();
+    if (!block) return;
+    enableEmptyMotion(block);
+    const timeline = block.motion.timeline;
+    if (timeline.keyframes.length >= 32) { status("키프레임은 요소당 최대 32개예요"); return; }
+    const current = selectedMotionFrame() || timeline.keyframes.at(-1);
+    const currentIndex = timeline.keyframes.findIndex((frame) => frame.id === current.id);
+    const next = timeline.keyframes[currentIndex + 1];
+    const previous = timeline.keyframes[currentIndex - 1];
+    let at = next && next.at - current.at > 1 ? Math.round((current.at + next.at) / 2) : previous && current.at - previous.at > 1 ? Math.round((previous.at + current.at) / 2) : -1;
+    if (at < 0) {
+      const gaps = timeline.keyframes.slice(0, -1).map((frame, index) => ({ start: frame.at, end: timeline.keyframes[index + 1].at })).sort((a, b) => (b.end - b.start) - (a.end - a.start));
+      at = gaps[0] && gaps[0].end - gaps[0].start > 1 ? Math.round((gaps[0].start + gaps[0].end) / 2) : Array.from({ length: 101 }, (_, index) => index).find((value) => !timeline.keyframes.some((frame) => frame.at === value)) ?? current.at;
+    }
+    const raw = copyCurrent ? { ...clone(current), at } : { at };
+    const frame = normalizeMotionKeyframe({ ...raw, id: uid("kf") }, timeline.keyframes.length);
+    timeline.keyframes.push(frame);
+    timeline.keyframes.sort((a, b) => a.at - b.at);
+    selectedMotionFrameId = frame.id; motionPlayhead = frame.at;
+  };
 
   const recordHistory = () => {
     const snapshot = JSON.stringify(data);
@@ -1337,11 +1919,13 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   };
 
   const renderCanvas = () => {
+    clearStudioMotion();
     const board = studio.querySelector(".archive-studio__board");
     board.innerHTML = archiveCanvasMarkup(data, currentPage(), { editing: true });
     const element = selectedId ? board.querySelector(`[data-block-id="${CSS.escape(selectedId)}"]`) : null;
     element?.classList.add("is-selected");
     applyZoom();
+    if (studioMode === "motion") requestAnimationFrame(() => scrubStudioMotion(motionPlayhead));
   };
 
   const renderPages = () => {
@@ -1357,24 +1941,40 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
 
   const renderLayers = () => {
     const list = studio.querySelector("[data-layer-list]");
-    list.innerHTML = [...currentPage().blocks].sort((a, b) => b.z - a.z).map((block) => `<button class="studio-layer ${block.id === selectedId ? "is-active" : ""}" data-select="${escapeHTML(block.id)}" type="button"><span>${block.visible ? (block.locked ? "🔒" : block.type) : "숨김"}</span>${escapeHTML(block.name)}</button>`).join("") || '<p class="studio-muted">아직 레이어가 없어요.</p>';
+    list.innerHTML = [...currentPage().blocks].sort((a, b) => b.z - a.z).map((block) => `<button class="studio-layer ${block.id === selectedId ? "is-active" : ""}" data-select="${escapeHTML(block.id)}" type="button"><span>${block.visible ? (block.locked ? "🔒" : block.type) : "숨김"}</span>${escapeHTML(block.name)}${block.motion.timeline.enabled ? `<i title="Motion Lab ${block.motion.timeline.keyframes.length} keyframes">◆ ${block.motion.timeline.keyframes.length}</i>` : ""}</button>`).join("") || '<p class="studio-muted">아직 레이어가 없어요.</p>';
   };
 
   const renderInspector = () => {
     const inspector = studio.querySelector("[data-inspector]");
     const block = selected();
-    inspector.innerHTML = block ? inspectorMarkup(block, data) : pageInspectorMarkup(data, currentPage());
+    selectedMotionFrame();
+    inspector.innerHTML = block ? inspectorMarkup(block, data, selectedMotionFrameId, studioMode === "motion") : pageInspectorMarkup(data, currentPage());
+  };
+
+  const renderMotionDock = () => {
+    const dock = studio.querySelector("[data-motion-lab-dock]");
+    if (!dock) return;
+    dock.outerHTML = motionLabDockMarkup(currentPage(), selectedId, selectedMotionFrameId, motionPlayhead, motionPreviewSpeed);
+    const speed = studio.querySelector("[data-motion-speed]");
+    if (speed) speed.insertAdjacentHTML("afterend", `<select data-motion-preview-mode aria-label="접근성 미리보기"><option value="full" ${motionPreviewMode === "full" ? "selected" : ""}>Full</option><option value="reduced" ${motionPreviewMode === "reduced" ? "selected" : ""}>Reduced</option><option value="off" ${motionPreviewMode === "off" ? "selected" : ""}>Off</option></select>`);
+    requestAnimationFrame(() => updateMotionTransport(motionPlayhead));
   };
 
   const renderSelection = ({ pages = false } = {}) => {
     if (pages) renderPages();
-    renderCanvas(); renderLayers(); renderInspector();
+    renderCanvas(); renderLayers(); renderInspector(); renderMotionDock();
   };
 
-  const selectBlock = (id) => { selectedId = id; renderSelection(); };
+  const selectBlock = (id) => {
+    selectedId = id;
+    const timeline = selected()?.motion.timeline;
+    selectedMotionFrameId = timeline?.keyframes.find((frame) => frame.id === selectedMotionFrameId)?.id || timeline?.keyframes[0]?.id || "";
+    if (studioMode === "motion" && timeline?.enabled && selectedMotionFrameId) motionPlayhead = timeline.keyframes.find((frame) => frame.id === selectedMotionFrameId)?.at || 0;
+    renderSelection();
+  };
   const selectPage = (id) => {
     if (!data.pages.some((page) => page.id === id)) return;
-    activePageId = id; selectedId = "";
+    activePageId = id; selectedId = ""; selectedMotionFrameId = ""; motionPlayhead = 0;
     syncArchiveFontStylesheet(data, activePageId); renderSelection({ pages: true });
   };
 
@@ -1399,6 +1999,79 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
 
   studio.addEventListener("click", async (event) => {
     if (event.target.matches("[data-archive-canvas]")) { selectedId = ""; renderSelection(); return; }
+    const modeButton = event.target.closest("[data-studio-mode]");
+    if (modeButton) {
+      studioMode = modeButton.dataset.studioMode === "motion" ? "motion" : "design";
+      studio.querySelector(".archive-studio__center")?.classList.toggle("is-motion-mode", studioMode === "motion");
+      studio.querySelectorAll("[data-studio-mode]").forEach((button) => { const active = button.dataset.studioMode === studioMode; button.classList.toggle("is-active", active); button.setAttribute("aria-pressed", String(active)); });
+      if (studioMode === "motion" && !selectedId) selectedId = currentPage().blocks.find((block) => block.motion.timeline.enabled)?.id || currentPage().blocks[0]?.id || "";
+      selectedMotionFrameId = selected()?.motion.timeline.keyframes[0]?.id || selectedMotionFrameId;
+      renderSelection();
+      studio.querySelector("[data-inspector]")?.scrollTo?.({ top: 0, behavior: "smooth" });
+      status(studioMode === "motion" ? "Motion Lab · 타임라인을 드래그해 확인하세요" : "Design 모드 · 배치와 콘텐츠 편집");
+      return;
+    }
+    const dockLayer = event.target.closest("[data-motion-dock-select]");
+    if (dockLayer) { selectBlock(dockLayer.dataset.motionDockSelect); return; }
+    const dockFrame = event.target.closest("[data-motion-dock-frame]");
+    if (dockFrame) {
+      selectedId = dockFrame.dataset.motionDockBlock;
+      selectedMotionFrameId = dockFrame.dataset.motionDockFrame;
+      motionPlayhead = selected()?.motion.timeline.keyframes.find((frame) => frame.id === selectedMotionFrameId)?.at || 0;
+      renderSelection();
+      return;
+    }
+    const addTrack = event.target.closest("[data-motion-add-track]");
+    if (addTrack) {
+      selectedId = addTrack.dataset.motionAddTrack;
+      const block = selected();
+      if (block?.locked) { status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); return; }
+      enableEmptyMotion(block); persist(); renderSelection(); return;
+    }
+    const motionPreset = event.target.closest("[data-motion-preset]");
+    if (motionPreset && selected()) {
+      if (selected().locked) { status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); return; }
+      applyMotionPreset(selected(), motionPreset.dataset.motionPreset); persist(); renderSelection(); status(`${MOTION_LAB_PRESETS[motionPreset.dataset.motionPreset]?.label || "Motion"} 프리셋 적용`); return;
+    }
+    const motionFrameSelect = event.target.closest("[data-motion-frame-select]");
+    if (motionFrameSelect) {
+      selectedMotionFrameId = motionFrameSelect.dataset.motionFrameSelect;
+      motionPlayhead = selectedMotionFrame()?.at || 0;
+      renderInspector(); renderMotionDock(); scrubStudioMotion(motionPlayhead); return;
+    }
+    if (event.target.closest("[data-motion-empty]") && selected()) {
+      if (selected().locked) { status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); return; }
+      enableEmptyMotion(selected()); persist(); renderSelection(); return;
+    }
+    if (event.target.closest("[data-motion-frame-add]") || event.target.closest("[data-motion-frame-copy]")) {
+      if (selected()?.locked) { status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); return; }
+      addMotionKeyframe({ copyCurrent: Boolean(event.target.closest("[data-motion-frame-copy]")) }); persist(); renderSelection(); return;
+    }
+    if (event.target.closest("[data-motion-frame-duplicate]") && selectedMotionFrame()) {
+      if (selected()?.locked) { status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); return; }
+      addMotionKeyframe({ copyCurrent: true }); persist(); renderSelection(); return;
+    }
+    if (event.target.closest("[data-motion-frame-delete]") && selectedMotionFrame()) {
+      const timeline = selectedTimeline();
+      if (selected()?.locked || timeline.keyframes.length <= 2) return;
+      const index = timeline.keyframes.findIndex((frame) => frame.id === selectedMotionFrameId);
+      timeline.keyframes.splice(index, 1);
+      selectedMotionFrameId = timeline.keyframes[Math.max(0, index - 1)]?.id || "";
+      motionPlayhead = selectedMotionFrame()?.at || 0;
+      persist(); renderSelection(); return;
+    }
+    if (event.target.closest("[data-motion-preview]")) { playStudioMotion({ onlySelected: true }); return; }
+    if (event.target.closest("[data-motion-stop]") || event.target.closest("[data-motion-page-stop]")) { clearStudioMotion(); scrubStudioMotion(0); status("모션 정지"); return; }
+    if (event.target.closest("[data-motion-page-restart]")) { playStudioMotion({ restart: true }); return; }
+    if (event.target.closest("[data-motion-page-play]")) { playStudioMotion({ restart: false }); return; }
+    if (event.target.closest("[data-motion-stagger]")) {
+      const blocks = currentPage().blocks.filter((block) => block.visible && !block.locked).sort((a, b) => a.y - b.y || a.x - b.x);
+      if (!blocks.length) { status("순차 등장시킬 레이어가 없어요"); return; }
+      if (blocks.some((block) => block.motion.timeline.enabled) && !confirm("현재 페이지의 기존 Motion Lab 트랙을 순차 등장 모션으로 바꿀까요?")) return;
+      blocks.forEach((block, index) => applyMotionPreset(block, "fade-up", index * 120));
+      selectedId = blocks[0].id; selectedMotionFrameId = blocks[0].motion.timeline.keyframes[0]?.id || ""; motionPlayhead = 0;
+      persist(); renderSelection(); status(`${blocks.length}개 레이어에 순차 등장 적용`); return;
+    }
     const pageButton = event.target.closest("[data-page-select]");
     if (pageButton) { selectPage(pageButton.dataset.pageSelect); return; }
     const pageMove = event.target.closest("[data-page-move]");
@@ -1486,7 +2159,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       data = clone(published); activePageId = data.settings.defaultPageId; selectedId = ""; historyStack = [JSON.stringify(data)]; historyIndex = 0; draftBase = fingerprint(published); draftConflict = false; saveDraft(data, published, draftBase); syncArchiveFontStylesheet(data, activePageId); renderSelection({ pages: true }); status("현재 게시본으로 되돌렸어요");
     }
     else if (action === "download") {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "archive-v3.json"; link.click(); URL.revokeObjectURL(link.href);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "archive-v4-motion-lab.json"; link.click(); URL.revokeObjectURL(link.href);
     } else if (action === "publish") {
       if (draftConflict && !confirm("GitHub의 현재 게시본이 이 로컬 초안을 만든 뒤 변경됐어요. 먼저 JSON 백업을 저장하고 차이를 확인하는 것이 안전해요. 그래도 게시 준비를 계속할까요?")) return;
       window.open(GITHUB_EDIT_URL, "_blank", "noopener");
@@ -1495,6 +2168,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   });
 
   studio.addEventListener("input", (event) => {
+    if (event.target.matches("[data-motion-scrub]")) { scrubStudioMotion(number(event.target.value, 0, 0, 100)); return; }
     const navPageInput = event.target.closest("[data-nav-page-id]");
     if (navPageInput) {
       const block = selected();
@@ -1519,7 +2193,19 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     else if (path.startsWith("canvas.")) { target = page; cleanPath = path; }
     if (!target) return;
     if (target === block && block?.locked && cleanPath !== "locked") { status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); renderInspector(); return; }
-    if (cleanPath === "galleryItemsText" && block) block.galleryItems = normalizeGalleryItems(input.value);
+    const motionFrameMatch = target === block ? cleanPath.match(/^motion\.timeline\.keyframes\.\d+\.(\w+)$/) : null;
+    if (motionFrameMatch && block) {
+      const frame = selectedMotionFrame();
+      if (!frame) return;
+      const key = motionFrameMatch[1];
+      frame[key] = typeof frame[key] === "number" ? number(input.value, frame[key]) : input.value;
+      if (key === "at") {
+        motionPlayhead = number(input.value, frame.at, 0, 100);
+        const output = studio.querySelector("[data-motion-at-output]");
+        if (output) output.textContent = `${number(input.value, frame.at, 0, 100)}%`;
+      }
+    }
+    else if (cleanPath === "galleryItemsText" && block) block.galleryItems = normalizeGalleryItems(input.value);
     else if (cleanPath === "visibleInverse" && block) block.visible = !input.checked;
     else {
       const current = getPath(target, cleanPath);
@@ -1535,9 +2221,11 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
         const directionInput = studio.querySelector('[data-field="motion.loop.direction"]');
         if (directionInput) directionInput.value = "normal";
       }
+      if (target === block && cleanPath === "motion.timeline.enabled" && value) enableEmptyMotion(block);
       if (target === page && cleanPath === "visibility") page.seo.noIndex = value !== "listed";
     }
-    persist(); renderCanvas(); renderLayers(); if (target === page) renderPages();
+    persist(); selectedMotionFrame(); renderCanvas(); renderLayers(); renderMotionDock(); if (target === page) renderPages();
+    if (target === block && ["motion.timeline.enabled", "motion.timeline.trigger", "motion.timeline.infinite"].includes(cleanPath)) renderInspector();
     if (target === page && cleanPath.startsWith("canvas.")) {
       const summary = studio.querySelector("[data-page-size-summary]");
       if (summary) summary.textContent = `${page.canvas.width} × ${page.canvas.height}px`;
@@ -1546,8 +2234,11 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
 
   studio.addEventListener("change", (event) => {
     if (event.target.matches("[data-zoom]")) { zoom = number(event.target.value, 0.5, 0.1, 2); applyZoom(); return; }
+    if (event.target.matches("[data-motion-speed]")) { motionPreviewSpeed = number(event.target.value, 1, .5, 2); renderMotionDock(); return; }
+    if (event.target.matches("[data-motion-preview-mode]")) { motionPreviewMode = event.target.value; scrubStudioMotion(motionPlayhead); return; }
     if (event.target.matches('[data-field="page.name"],[data-field="page.slug"],[data-field="page.visibility"]')) { renderPages(); renderInspector(); }
     if (event.target.matches('[data-field="action.type"],[data-field="playbackMode"],[data-field="embedMode"],[data-field="navMode"]')) renderInspector();
+    if (event.target.matches('[data-field^="motion.timeline"]')) { selectedMotionFrame(); renderInspector(); renderMotionDock(); scrubStudioMotion(motionPlayhead); }
   });
 
   studio.querySelector("[data-image-picker]").addEventListener("change", (event) => {
@@ -1568,15 +2259,43 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     event.preventDefault(); selectedId = blockElement.dataset.blockId; const block = selected();
     canvas()?.querySelectorAll(".is-selected").forEach((element) => element.classList.remove("is-selected"));
     if (block.locked) { renderLayers(); renderInspector(); blockElement.classList.add("is-selected"); return; }
+    const timeline = block.motion.timeline;
+    if (studioMode === "motion" && !timeline.enabled) {
+      renderLayers(); renderInspector(); blockElement.classList.add("is-selected");
+      status("이 레이어는 아직 모션이 없어요 · 오른쪽 프리셋이나 + 모션을 선택하세요");
+      return;
+    }
+    if (studioMode === "motion" && timeline.enabled) {
+      const closestFrame = timeline.keyframes.find((frame) => frame.id === selectedMotionFrameId) || [...timeline.keyframes].sort((a, b) => Math.abs(a.at - motionPlayhead) - Math.abs(b.at - motionPlayhead))[0];
+      selectedMotionFrameId = closestFrame?.id || "";
+      motionPlayhead = closestFrame?.at ?? motionPlayhead;
+    }
+    const motionFrame = studioMode === "motion" && timeline.enabled ? selectedMotionFrame() : null;
     blockElement.setPointerCapture?.(event.pointerId);
-    drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: block.x, y: block.y, width: block.width, height: block.height, resize: Boolean(event.target.closest("[data-resize]")) };
+    drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, x: block.x, y: block.y, width: block.width, height: block.height, resize: Boolean(event.target.closest("[data-resize]")), motion: Boolean(motionFrame), motionFrameId: motionFrame?.id || "", motionX: motionFrame?.x || 0, motionY: motionFrame?.y || 0 };
     renderLayers(); renderInspector(); blockElement.classList.add("is-selected");
   });
 
   studio.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return; const block = selected(); if (!block) return;
+    const element = canvas()?.querySelector(`[data-block-id="${CSS.escape(block.id)}"]`);
     const dx = (event.clientX - drag.startX) / zoom; const dy = (event.clientY - drag.startY) / zoom; const snap = (value) => Math.round(value / currentPage().canvas.grid) * currentPage().canvas.grid;
     const radians = block.rotation * Math.PI / 180; const cosine = Math.cos(radians); const sine = Math.sin(radians); const localX = dx * cosine + dy * sine; const localY = -dx * sine + dy * cosine;
+    if (drag.motion) {
+      const frame = block.motion.timeline.keyframes.find((item) => item.id === drag.motionFrameId);
+      if (!frame) return;
+      frame.x = snap(drag.motionX + localX); frame.y = snap(drag.motionY + localY);
+      clearStudioMotion();
+      const target = element?.querySelector(".canvas-block__timeline");
+      if (target) {
+        target.style.transform = motionLabTransform(frame, block.motion.timeline.perspective);
+        target.style.transformOrigin = block.motion.timeline.origin.replace("-", " ");
+        target.style.opacity = frame.opacity;
+        target.style.filter = `blur(${frame.blur}px) brightness(${frame.brightness}) saturate(${frame.saturate}) hue-rotate(${frame.hue}deg)`;
+      }
+      status(`키프레임 ${frame.at}% · X ${frame.x} / Y ${frame.y}`);
+      return;
+    }
     if (drag.resize) {
       const oldCenterX = drag.x + drag.width / 2; const oldCenterY = drag.y + drag.height / 2;
       const fixedCornerX = oldCenterX - drag.width * cosine / 2 + drag.height * sine / 2;
@@ -1587,10 +2306,10 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       block.width = nextWidth; block.height = nextHeight; block.x = nextCenterX - nextWidth / 2; block.y = nextCenterY - nextHeight / 2;
     }
     else { block.x = snap(drag.x + dx); block.y = snap(drag.y + dy); }
-    const element = canvas()?.querySelector(`[data-block-id="${CSS.escape(block.id)}"]`); if (element) element.setAttribute("style", `${commonStyle(block)};--entrance-duration:${block.motion.entrance.duration}ms;--entrance-delay:${block.motion.entrance.delay}ms;--entrance-easing:${block.motion.entrance.easing};--hover-duration:${block.motion.hover.duration}ms;--hover-amount:${block.motion.hover.amount};--loop-duration:${block.motion.loop.duration}ms;--loop-delay:${block.motion.loop.delay}ms;--loop-direction:${block.motion.loop.direction}`); status("편집 중…");
+    if (element) element.setAttribute("style", `${commonStyle(block)};--entrance-duration:${block.motion.entrance.duration}ms;--entrance-delay:${block.motion.entrance.delay}ms;--entrance-easing:${block.motion.entrance.easing};--hover-duration:${block.motion.hover.duration}ms;--hover-amount:${block.motion.hover.amount};--loop-duration:${block.motion.loop.duration}ms;--loop-delay:${block.motion.loop.delay}ms;--loop-direction:${block.motion.loop.direction}`); status("편집 중…");
   });
 
-  const finishDrag = (event) => { if (!drag || event.pointerId !== drag.pointerId) return; drag = null; persist(); renderInspector(); };
+  const finishDrag = (event) => { if (!drag || event.pointerId !== drag.pointerId) return; const wasMotion = drag.motion; drag = null; persist(); renderInspector(); renderMotionDock(); if (wasMotion) scrubStudioMotion(motionPlayhead); };
   studio.addEventListener("pointerup", finishDrag); studio.addEventListener("pointercancel", finishDrag);
 
   const handleKeydown = (event) => {
@@ -1601,12 +2320,22 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateBlock(selected()); return; }
     if (["Backspace", "Delete"].includes(event.key)) { event.preventDefault(); currentPage().blocks = currentPage().blocks.filter((block) => block.id !== selectedId); selectedId = currentPage().blocks.at(-1)?.id || ""; persist(); renderSelection(); return; }
     const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-    if (moves[event.key]) { event.preventDefault(); const amount = event.shiftKey ? 10 : 1; selected().x += moves[event.key][0] * amount; selected().y += moves[event.key][1] * amount; persist(); renderSelection(); }
+    if (moves[event.key]) {
+      event.preventDefault(); const amount = event.shiftKey ? 10 : 1;
+      if (studioMode === "motion") {
+        if (!selectedTimeline()?.enabled || !selectedMotionFrame()) { status("이 레이어는 아직 모션이 없어요 · 프리셋이나 + 모션을 선택하세요"); return; }
+        const radians = selected().rotation * Math.PI / 180;
+        const screenX = moves[event.key][0] * amount; const screenY = moves[event.key][1] * amount;
+        selectedMotionFrame().x += screenX * Math.cos(radians) + screenY * Math.sin(radians);
+        selectedMotionFrame().y += -screenX * Math.sin(radians) + screenY * Math.cos(radians);
+      } else { selected().x += moves[event.key][0] * amount; selected().y += moves[event.key][1] * amount; }
+      persist(); renderSelection();
+    }
   };
   addEventListener("keydown", handleKeydown);
 
   const initiallySaved = saveDraft(data, published, draftBase); syncArchiveFontStylesheet(data, activePageId); renderSelection({ pages: true });
   if (!initiallySaved) status("자동 저장 실패 — JSON 백업을 눌러주세요");
   else if (draftConflict) status("게시본이 변경됐어요 · 백업 후 비교하고 게시하세요");
-  return () => { saveDraft(data, published, draftBase); removeEventListener("keydown", handleKeydown); };
+  return () => { disposed = true; clearStudioMotion(); saveDraft(data, published, draftBase); removeEventListener("keydown", handleKeydown); };
 }

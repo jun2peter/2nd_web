@@ -83,7 +83,7 @@ content:
       - { name: featured, type: boolean }
 
   - name: archive
-    label: Archive Studio 3 · 멀티페이지/미디어
+    label: Archive Studio 4 · Motion Lab
     type: file
     path: content/archive.json
     format: json
@@ -337,6 +337,61 @@ content:
                       - { name: duration, type: number }
                       - { name: delay, type: number }
                       - { name: direction, type: string }
+                  - name: timeline
+                    label: Motion Lab 키프레임
+                    type: object
+                    fields:
+                      - { name: enabled, label: 사용, type: boolean }
+                      - name: trigger
+                        label: 시작 조건
+                        type: select
+                        options:
+                          values: [load, in-view, hover, press, click, scroll]
+                      - { name: duration, label: 시간(ms), type: number }
+                      - { name: delay, label: 지연(ms), type: number }
+                      - { name: iterations, label: 반복 횟수, type: number }
+                      - { name: infinite, label: 무한 반복, type: boolean }
+                      - name: direction
+                        type: select
+                        options:
+                          values: [normal, reverse, alternate, alternate-reverse]
+                      - name: fill
+                        label: 완료 상태
+                        type: select
+                        options:
+                          values: [none, forwards, backwards, both]
+                      - name: origin
+                        label: 변형 기준점
+                        type: select
+                        options:
+                          values: [center, top, top-right, right, bottom-right, bottom, bottom-left, left, top-left]
+                      - { name: perspective, label: 3D 원근, type: number }
+                      - { name: once, label: 한 번만 재생, type: boolean }
+                      - name: keyframes
+                        label: 키프레임
+                        type: object
+                        list:
+                          collapsible:
+                            collapsed: true
+                            summary: "{at}% · {id}"
+                        fields:
+                          - { name: id, type: string, required: true }
+                          - { name: at, label: 위치(%), type: number }
+                          - { name: x, label: X 이동, type: number }
+                          - { name: y, label: Y 이동, type: number }
+                          - { name: scaleX, label: 가로 배율, type: number }
+                          - { name: scaleY, label: 세로 배율, type: number }
+                          - { name: rotate, label: 회전 Z, type: number }
+                          - { name: rotateX, label: 회전 X, type: number }
+                          - { name: rotateY, label: 회전 Y, type: number }
+                          - { name: skewX, label: 기울기 X, type: number }
+                          - { name: skewY, label: 기울기 Y, type: number }
+                          - { name: opacity, label: 투명도, type: number }
+                          - { name: blur, label: 블러, type: number }
+                          - { name: brightness, label: 밝기, type: number }
+                          - { name: saturate, label: 채도, type: number }
+                          - { name: hue, label: 색상 회전, type: number }
+                          - { name: easing, label: 이징, type: string }
 
   - name: notes
     label: Research axes

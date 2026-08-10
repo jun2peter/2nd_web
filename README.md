@@ -6,27 +6,29 @@ MIT Media Lab 지원과 장기 작품 아카이빙을 함께 고려한 포트폴
 
 - 기본 화면 — **Experience**: 작품을 전시처럼 천천히 경험하는 인터랙티브 버전
 - `?view=archive` — **Archive**: 흰색 자유 배치 멀티페이지 사이트
-- `?view=archive&edit=1` — **Archive Studio 3**: 피그마처럼 페이지와 요소를 만들고 드래그·리사이즈하는 편집 화면
+- `?view=archive&edit=1` — **Archive Studio 4 · Motion Lab**: 피그마처럼 페이지와 요소를 만들고 키프레임까지 편집하는 화면
 - `?view=archive&page=페이지주소` — Archive의 다른 공개·링크 전용 페이지
 - `?work=작품주소` — Experience에서 여는 작품 상세 페이지
 
-Experience의 작품 데이터와 Archive의 자유 배치 데이터는 분리되어 있습니다. Archive 화면은 `content/archive.json`의 v3 멀티페이지·미디어 데이터를 읽습니다. 예전 v1 단일 캔버스와 v2 로컬 초안도 열 때 자동 변환됩니다.
+Experience의 작품 데이터와 Archive의 자유 배치 데이터는 분리되어 있습니다. Archive 화면은 `content/archive.json`의 v4 멀티페이지·미디어·Motion Lab 데이터를 읽습니다. 예전 v1 단일 캔버스와 v2·v3 로컬 초안도 열 때 자동 변환됩니다.
 
 ## Archive Studio 사용법
 
 1. `?view=archive&edit=1`을 엽니다.
 2. 왼쪽에서 **＋ 메뉴 페이지** 또는 **＋ 링크 전용**을 고릅니다. 메뉴 페이지는 페이지 메뉴에 자동으로 나타나고, 링크 전용 페이지는 버튼·이미지·링크 카드로만 들어갑니다.
 3. 텍스트, 이미지·GIF, 영상, 오디오, 버튼, 도형, 선, 반복 글자, 갤러리, 임베드, 페이지 메뉴를 추가합니다.
-4. 요소를 드래그하거나 오른쪽의 **내용 → 재생/메뉴 → 클릭 동작 → 위치·크기 → 모양 → 애니메이션** 순서로 설정합니다.
-5. 버튼·이미지의 **클릭 동작**에서 다른 페이지, 같은 페이지 위치, 외부 링크, 이메일, 전화, 다운로드, 뒤로가기를 지정합니다.
-6. 영상·오디오는 **재생 방식**에서 클릭, 무음 자동재생, 화면 진입, 호버, 기본 플레이어, 링크 카드를 고릅니다. GIF는 바로 재생, 클릭, 호버 중 하나를 고릅니다.
-7. 임베드가 다른 페이지로 이동해야 한다면 **재생 방식 → 재생 없이 페이지·링크 이동**을 고른 뒤 **클릭 동작 → 다른 페이지**에서 목적지를 정합니다.
-8. 페이지 자체를 선택하면 오른쪽 **페이지 크기 → 페이지 길이(px)**에서 페이지별 길이를 바꿀 수 있습니다.
-9. **검수**로 목적지 없는 버튼·링크 카드, 무시되는 클릭 동작, 연결되지 않은 링크 전용 페이지, 빠진 이미지 설명, 깨진 내부 링크를 확인합니다.
-10. 작업 내용은 현재 브라우저에 자동 저장되며 실행 취소·다시 실행, JSON 백업·불러오기를 지원합니다.
-11. **게시 준비**를 누르면 완성된 JSON이 복사되고 GitHub 편집 화면이 열립니다. 전체 내용을 붙여넣고 **Commit changes**를 누르면 공개 사이트에 반영됩니다.
+4. 요소를 드래그하거나 오른쪽의 **내용 → 재생/메뉴 → 클릭 동작 → 위치·크기 → 모양 → 빠른 애니메이션 → Motion Lab** 순서로 설정합니다.
+5. 정밀한 애니메이션은 상단 **Motion**을 누릅니다. 하단 타임라인에서 레이어와 키프레임을 고르고 스크럽한 뒤, 캔버스를 드래그해 그 키프레임의 X/Y를 직접 기록할 수 있습니다.
+6. Motion Lab의 프리셋, 빈 모션, 키프레임 추가·복제·삭제를 사용하고 페이지 열림·화면 진입·클릭·호버·누르는 동안·스크롤 진행 중 하나를 시작 조건으로 고릅니다. `순차 등장`은 현재 페이지의 레이어들을 위에서 아래 순서로 자동 배치합니다.
+7. 버튼·이미지의 **클릭 동작**에서 다른 페이지, 같은 페이지 위치, 외부 링크, 이메일, 전화, 다운로드, 뒤로가기를 지정합니다.
+8. 영상·오디오는 **재생 방식**에서 클릭, 무음 자동재생, 화면 진입, 호버, 기본 플레이어, 링크 카드를 고릅니다. GIF는 바로 재생, 클릭, 호버 중 하나를 고릅니다.
+9. 임베드가 다른 페이지로 이동해야 한다면 **재생 방식 → 재생 없이 페이지·링크 이동**을 고른 뒤 **클릭 동작 → 다른 페이지**에서 목적지를 정합니다.
+10. 페이지 자체를 선택하면 오른쪽 **페이지 크기 → 페이지 길이(px)**에서 페이지별 길이를 바꿀 수 있습니다.
+11. **검수**로 목적지 없는 버튼·링크 카드, 무시되는 클릭 동작, 연결되지 않은 링크 전용 페이지, 빠진 이미지 설명, 깨진 내부 링크를 확인합니다.
+12. 작업 내용은 현재 브라우저에 자동 저장되며 실행 취소·다시 실행, JSON 백업·불러오기를 지원합니다.
+13. **게시 파일 준비**를 누르면 완성된 JSON이 복사되고 GitHub 편집 화면이 열립니다. 전체 내용을 붙여넣고 **Commit changes**를 누르면 공개 사이트에 반영됩니다. 이 버튼만으로 자동 게시되지는 않습니다.
 
-## Archive Studio 3 기능
+## Archive Studio 4 · Motion Lab 기능
 
 - 메뉴 페이지와 링크 전용 페이지를 별도 버튼으로 생성, 페이지 그룹·복제·삭제·순서 변경·홈페이지 지정
 - 메뉴에 보이는 공개 페이지, 버튼으로만 들어가는 링크 전용 페이지, 공개되지 않는 초안 페이지
@@ -35,13 +37,19 @@ Experience의 작품 데이터와 Archive의 자유 배치 데이터는 분리�
 - 각진·둥근·캡슐·원형·테두리·이미지 버튼
 - 페이지별 고정 아트보드, 웹폰트, SEO 제목·설명·공유 이미지·언어·noindex
 - 등장·스크롤 reveal·호버·반복·스크롤/마우스 패럴랙스·타이프라이터·스크램블·방문자 드래그
+- `Design / Motion` 모드, 레이어별 하단 타임라인, 0–100% playhead scrub, 선택 모션·페이지 모션 재생/정지, 0.5×·1×·2× 미리보기
+- X/Y·가로/세로 배율·3축 회전·기울기·투명도·블러·밝기·채도·색상 회전 키프레임과 Linear/Ease/Spring/Steps 이징
+- 페이지 열림·화면 진입·클릭·호버/터치·누르는 동안·스크롤 진행 트리거, 반복·왕복·지연·변형 기준점·3D 원근, 8개 모션 프리셋과 다중 레이어 순차 등장
+- Full/Reduced/Off 편집 미리보기, 운영체제 `prefers-reduced-motion`, 방문자 Pause motion, 페이지 이동 시 모션 정리
 - 갤러리 그리드·슬라이드쇼·라이트박스, YouTube·Vimeo·Spotify·SoundCloud·Google Maps 임베드
 - 이미지 반복, GIF 포스터/클릭/호버 재생, 영상·오디오 6가지 재생 정책, 반복·음소거·컨트롤·포스터·WebVTT 자막
 - 임베드 바로 조작, 클릭 후 로드, 페이지·외부 링크 카드 모드
 - 레이어 숨김·잠금·앞뒤 순서, 스냅, 키보드 이동, `⌘/Ctrl+D` 복제, `⌘/Ctrl+Z` 실행 취소
 - 페이지 전환, 사용자 커서, 스크롤 진행선, 방문자용 모션 정지 버튼
 
-v3의 재생 정책과 위계는 [Figma Sites interactions](https://help.figma.com/hc/en-us/articles/35895820755095-Figma-Sites-collection-Add-interactions-to-a-website), [Figma Sites media](https://help.figma.com/hc/en-us/articles/33666207487767-Add-images-and-video-to-a-site), [Framer video](https://www.framer.com/help/articles/how-to-add-video/), [Readymag animation](https://help.readymag.com/hc/en-us/articles/360020527292-Animation), [Cargo embeds](https://docs.cargo.site/third-party-embeds)의 장점을 비교해 이 저장소에 맞게 단순화했습니다.
+v4는 [Figma Motion](https://www.figma.com/blog/introducing-figma-motion/)의 Design/Motion 모드와 타임라인, [Figma Sites interactions](https://help.figma.com/hc/en-us/articles/31242843431575-Add-interactions-to-an-element), [Framer scroll transform](https://www.framer.com/academy/lessons/framer-animations-scroll-transform), [Readymag animation](https://help.readymag.com/hc/en-us/articles/360020527292-Animation), [Webflow timeline](https://help.webflow.com/hc/en-us/articles/42861689104531-Timeline-in-Interactions-with-GSAP)의 장점을 비교해 이 저장소에 맞게 단순화했습니다.
+
+현재 Motion Lab은 **레이어별 키프레임 v1**입니다. 여러 레이어는 하단 타임라인에서 함께 스크럽·재생하고 `순차 등장`으로 시퀀스를 만들 수 있지만, 하나의 클릭이 여러 레이어의 서로 다른 모션 장면을 동시에 실행하는 scene/variant orchestration은 다음 확장 범위입니다. 기존 빠른 애니메이션과 Motion Lab은 서로 다른 wrapper에서 합성되므로 함께 사용할 수 있습니다.
 
 작은 이미지와 GIF는 편집기에서 바로 불러올 수 있습니다. 큰 이미지·GIF와 짧은 MP4·WebM·MP3 파일은 편집기의 업로드 버튼 또는 Pages CMS의 Media에 올린 뒤 `/media/파일명`을 사용하세요. 링크와 업로드를 모두 지원합니다. GitHub 웹 업로드는 파일당 25MB 제한이 있으므로 긴 영상은 YouTube·Vimeo 같은 외부 영상 링크 사용을 권장합니다. 100MB에 가까운 영상을 Git 저장소에 반복해서 넣으면 사이트 전체 용량과 방문자 로딩이 빠르게 커집니다.
 

@@ -7,7 +7,8 @@ Figma는 호스팅이 아니라 설계 도면으로만 사용합니다. 운영 �
 | `01 Experience / Desktop` | 기본 화면 | `experienceTemplate()` |
 | `01 Experience / Mobile` | 기본 화면 720px 이하 | `styles.css` mobile media query |
 | `02 Archive / [page-slug] / 1440` | `?view=archive&page=[slug]` | `content/archive.json`의 해당 page |
-| `02 Archive Studio 3` | `?view=archive&edit=1` | `archive-editor.js` |
+| `02 Archive Studio 4 / Design` | `?view=archive&edit=1` | `archive-editor.js` |
+| `02 Archive Studio 4 / Motion` | Studio 상단 `Motion` | `block.motion.timeline` |
 | `03 Work / Desktop` | `?work=[slug]` | `detailTemplate()` |
 | `03 Work / Mobile` | Work 720px 이하 | `styles.css` mobile media query |
 
@@ -23,6 +24,8 @@ Figma는 호스팅이 아니라 설계 도면으로만 사용합니다. 운영 �
 - `Archive / ImageButton`
 - `Archive / Navigation`
 - `Archive / Gallery`
+- `Archive / MotionTrack`
+- `Archive / MotionKeyframe`
 
 ## Figma의 Archive 디자인을 Studio로 옮기는 법
 
@@ -31,9 +34,13 @@ Figma는 호스팅이 아니라 설계 도면으로만 사용합니다. 운영 �
 3. Figma 오른쪽 패널의 `X / Y / W / H / Rotation / Opacity` 값을 Studio 오른쪽 패널에 그대로 입력합니다. 둘 다 픽셀 기준입니다.
 4. 이미지·GIF·영상은 Figma에서 export한 뒤 GitHub `media/`에 업로드하고 `/media/파일명`을 넣습니다.
 5. Figma의 Fill, Stroke, Radius, Shadow, Blur, Blend 값을 Studio의 모양 패널에서 맞춥니다. 그라디언트는 CSS `linear-gradient(...)` 문자열도 사용할 수 있습니다.
-6. 페이지 이동과 hover·scroll·loop 애니메이션은 Figma prototype 설명을 참고해 Studio의 **클릭 동작 / 애니메이션**에서 지정합니다.
+6. 페이지 이동과 hover·scroll·loop 애니메이션은 Studio의 **클릭 동작 / 빠른 애니메이션**에서 지정합니다.
 7. Figma의 최상위 Frame 하나가 Studio의 페이지 하나입니다. 메뉴에 보여야 하면 **메뉴 페이지**, 버튼으로만 들어가야 하면 **링크 전용**으로 만듭니다.
 8. 영상·오디오·GIF의 Prototype 메모에 `autoplay`, `click`, `hover`, `in-view`, `controls`, `link` 중 재생 정책을 적고 Studio의 **재생 방식**에서 같은 값을 고릅니다.
+9. Figma Motion의 키프레임은 Studio 상단 **Motion** 모드에서 옮깁니다. Position은 키프레임 X/Y, Scale은 가로·세로 배율, Rotation은 Z/X/Y 회전, Opacity와 Blur는 Appearance에 입력합니다.
+10. Figma Motion의 시간은 Studio의 duration/delay, layer timing은 하단 공통 타임라인, easing은 각 키프레임의 ‘이 프레임 뒤 이징’에 대응합니다. Scroll Transform은 시작 조건을 **스크롤 진행률**로 선택합니다.
+
+Motion Lab v1은 레이어마다 하나의 키프레임 트랙을 가집니다. 여러 레이어를 같은 하단 타임라인에서 재생·스크럽하고 `순차 등장`을 적용할 수 있지만, 하나의 trigger가 여러 레이어의 서로 다른 scene/variant를 동시에 전환하는 기능은 아직 코드의 다음 확장 범위입니다.
 
 ## 페이지 메뉴와 임베드 규칙
 
