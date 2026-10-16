@@ -345,6 +345,24 @@ content:
                   values: [normal, multiply, screen, overlay, difference, exclusion, color-burn, color-dodge]
               - { name: blur, type: number }
               - { name: grayscale, type: number }
+              - { name: contrast, type: number }
+              - { name: saturate, type: number }
+              - { name: brightness, type: number }
+              - { name: hueRotate, type: number }
+              - { name: sepia, type: number }
+              - { name: invert, type: number }
+              - { name: focalX, type: number }
+              - { name: focalY, type: number }
+              - name: clipShape
+                type: select
+                options:
+                  values: [none, circle, ellipse, triangle, diamond, hexagon, star, blob, blob2, arch, pill, custom]
+              - { name: clipCustom, type: string }
+              - name: hoverEffect
+                type: select
+                options:
+                  values: [none, zoom, color, gray, bright, lift, swap]
+              - { name: hoverSrc, type: string }
               - { name: shadowX, type: number }
               - { name: shadowY, type: number }
               - { name: shadowBlur, type: number }

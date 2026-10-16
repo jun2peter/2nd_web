@@ -1,9 +1,9 @@
 // Runs custom components (components/*.js) and sandboxed code blocks inside Archive pages.
 // The contract every component follows is documented in docs/COMPONENTS.md.
 
-import { COMPONENTS } from "../components/registry.js?v=studio5";
+import { COMPONENTS } from "../components/registry.js?v=studio6";
 
-const VERSION = "studio5";
+const VERSION = "studio6";
 
 // Pinned CDN builds a component may ask for with ctx.lib(name).
 export const LIBRARIES = {

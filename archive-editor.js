@@ -17,7 +17,7 @@ import {
   resolveBlock,
   responsiveCSS,
   setOverride,
-} from "./archive/responsive.js?v=studio5";
+} from "./archive/responsive.js?v=studio6";
 import {
   bindCodeBlocks,
   codeBlockDocument,
@@ -29,8 +29,8 @@ import {
   reattachLiveComponents,
   resolveProps,
   sanitizeProps,
-} from "./archive/components-host.js?v=studio5";
-import { bindCustomCursor, bindMagnetic, bindPins, bindSmoothScroll, bindSplitText } from "./archive/effects.js?v=studio5";
+} from "./archive/components-host.js?v=studio6";
+import { bindCustomCursor, bindMagnetic, bindPins, bindSmoothScroll, bindSplitText } from "./archive/effects.js?v=studio6";
 
 const DATA_VERSION = 5;
 const STORAGE_KEY = "psj-archive-builder-draft-v5";
@@ -43,6 +43,31 @@ const MOTION_LAB_TRIGGERS = ["load", "in-view", "hover", "press", "click", "scro
 const TRANSITION_PRESETS = ["none", "fade", "slide", "zoom", "wipe", "circle", "blur"];
 const CURSOR_PRESETS = ["default", "dot", "crosshair", "ring", "blend"];
 const MOTION_LAB_ORIGINS = ["center", "top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left", "top-left"];
+// Studio 6: media as material — clip shapes, hover states (see visualEffectStyle / imageMarkup / inspectorMarkup).
+const CLIP_SHAPES = ["none", "circle", "ellipse", "triangle", "diamond", "hexagon", "star", "blob", "blob2", "arch", "pill", "custom"];
+const CLIP_SHAPE_LABELS = { none: "자르지 않음", circle: "원", ellipse: "타원", triangle: "삼각형", diamond: "마름모", hexagon: "육각형", star: "별", blob: "블롭 1", blob2: "블롭 2", arch: "아치", pill: "캡슐", custom: "직접 입력 (clip-path)" };
+const CLIP_PATHS = {
+  circle: "circle(50% at 50% 50%)",
+  ellipse: "ellipse(50% 50% at 50% 50%)",
+  triangle: "polygon(50% 0%, 100% 100%, 0% 100%)",
+  diamond: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+  hexagon: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
+  star: "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)",
+  blob: "inset(0 round 60% 40% 30% 70% / 60% 30% 70% 40%)",
+  blob2: "inset(0 round 30% 70% 70% 30% / 30% 30% 70% 70%)",
+  arch: "inset(0 round 50% 50% 0 0 / 100% 100% 0 0)",
+  pill: "inset(0 round 9999px)",
+};
+const HOVER_EFFECTS = ["none", "zoom", "color", "gray", "bright", "lift", "swap"];
+const HOVER_EFFECT_LABELS = { none: "없음", zoom: "살짝 확대", color: "흑백 → 컬러", gray: "컬러 → 흑백", bright: "밝아짐", lift: "떠오름 (그림자)", swap: "다른 이미지로 교체" };
+// clip-path for a block: a preset, or a sanitized custom shape (polygon/circle/ellipse/inset/path only).
+function clipPathFor(block = {}) {
+  if (block.clipShape === "custom") {
+    const custom = String(block.clipCustom || "").replace(/[;{}<>\\]/g, "").replaceAll('"', "'").trim();
+    return /^(polygon|circle|ellipse|inset|path)\(.+\)$/i.test(custom) ? custom : "";
+  }
+  return CLIP_PATHS[block.clipShape] || "";
+}
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 const escapeHTML = (value = "") =>
@@ -532,6 +557,18 @@ function normalizeBlock(block = {}, index = 0) {
     blendMode: ["normal", "multiply", "screen", "overlay", "difference", "exclusion", "color-burn", "color-dodge"].includes(block.blendMode) ? block.blendMode : "normal",
     blur: number(block.blur, 0, 0, 80),
     grayscale: number(block.grayscale, 0, 0, 1),
+    contrast: number(block.contrast, 1, 0, 3),
+    saturate: number(block.saturate, 1, 0, 3),
+    brightness: number(block.brightness, 1, 0, 3),
+    hueRotate: number(block.hueRotate, 0, -360, 360),
+    sepia: number(block.sepia, 0, 0, 1),
+    invert: number(block.invert, 0, 0, 1),
+    clipShape: CLIP_SHAPES.includes(block.clipShape) ? block.clipShape : "none",
+    clipCustom: String(block.clipCustom ?? "").slice(0, 2000),
+    focalX: number(block.focalX, 50, 0, 100),
+    focalY: number(block.focalY, 50, 0, 100),
+    hoverEffect: HOVER_EFFECTS.includes(block.hoverEffect) ? block.hoverEffect : "none",
+    hoverSrc: String(block.hoverSrc ?? ""),
     shadowX: number(block.shadowX, 0, -200, 200),
     shadowY: number(block.shadowY, 0, -200, 200),
     shadowBlur: number(block.shadowBlur, 0, 0, 200),
@@ -815,9 +852,12 @@ function surfaceStyle(block) {
 }
 
 function visualEffectStyle(block) {
+  const clip = clipPathFor(block);
   return [
-    `filter:blur(${block.blur}px) grayscale(${block.grayscale}) drop-shadow(${block.shadowX}px ${block.shadowY}px ${block.shadowBlur}px ${block.shadowColor})`,
-  ].join(";");
+    `filter:blur(${block.blur}px) grayscale(${block.grayscale}) contrast(${number(block.contrast, 1)}) saturate(${number(block.saturate, 1)}) brightness(${number(block.brightness, 1)}) hue-rotate(${number(block.hueRotate)}deg) sepia(${number(block.sepia)}) invert(${number(block.invert)}) drop-shadow(${block.shadowX}px ${block.shadowY}px ${block.shadowBlur}px ${block.shadowColor})`,
+    clip ? `clip-path:${clip}` : "",
+    `--focal:${number(block.focalX, 50)}% ${number(block.focalY, 50)}%`,
+  ].filter(Boolean).join(";");
 }
 
 function routeForPage(data, pageId, anchorId = "", draft = false) {
@@ -982,7 +1022,9 @@ function imageMarkup(block, { editing = false, linking = false } = {}) {
     return `<div class="canvas-gif-shell" ${mode === "link" ? "" : `data-gif-shell data-gif-mode="${mode}" data-gif-src="${escapeHTML(src)}" data-gif-alt="${escapeHTML(block.decorative ? "" : block.alt)}" data-gif-fit="${block.objectFit}"`}>${poster}${["click", "hover"].includes(mode) ? mediaPlayButton(block, block.playLabel || "Play GIF") : ""}</div>`;
   }
   if (block.repeat !== "no-repeat") return `<div class="canvas-block__repeated-image" style="background-image:url('${escapeHTML(src)}');background-repeat:${block.repeat};background-size:${block.repeatSize}px auto;border-radius:${block.borderRadius}px"></div>`;
-  return `<img src="${escapeHTML(src)}" alt="${block.decorative ? "" : escapeHTML(block.alt)}" ${block.decorative ? 'aria-hidden="true"' : ""} loading="lazy" style="object-fit:${block.objectFit};border-radius:${block.borderRadius}px">`;
+  const hoverSource = block.hoverEffect === "swap" ? safeURL(block.hoverSrc, { imageData: true }) : "";
+  const swap = hoverSource ? `<img class="canvas-hover-swap" src="${escapeHTML(hoverSource)}" alt="" aria-hidden="true" loading="lazy" style="object-fit:${block.objectFit};border-radius:${block.borderRadius}px">` : "";
+  return `<img src="${escapeHTML(src)}" alt="${block.decorative ? "" : escapeHTML(block.alt)}" ${block.decorative ? 'aria-hidden="true"' : ""} loading="lazy" style="object-fit:${block.objectFit};border-radius:${block.borderRadius}px">${swap}`;
 }
 
 function blockContent(block, data, draft = false, currentPageId = "", editing = false, linking = false) {
@@ -1035,7 +1077,7 @@ export function archiveBlockMarkup(rawBlock, { data, editing = false, draft = fa
   const visitorDraggable = block.publicDraggable && !["video", "audio", "embed", "code"].includes(block.type) && !action && !block.lightbox && !block.fixed;
   const motionLabData = motionLab.enabled ? `data-motion-lab="${escapeHTML(JSON.stringify(motionLab))}" data-motion-lab-trigger="${motionLab.trigger}"` : "";
   const motionFocusable = motionLab.enabled && ["click", "press", "hover"].includes(motionLab.trigger) && !action && !["video", "audio", "embed", "nav", "code"].includes(block.type) ? `tabindex="0" ${["click", "press"].includes(motionLab.trigger) ? 'role="button"' : ""}` : "";
-  const flags = `${block.fixed ? ` data-fixed="${block.fixedAnchor}"` : ""}${block.pinEnabled && !block.fixed ? " data-pin" : ""}${isGlobal ? " data-global" : ""}`;
+  const flags = `${block.fixed ? ` data-fixed="${block.fixedAnchor}"` : ""}${block.pinEnabled && !block.fixed ? " data-pin" : ""}${isGlobal ? " data-global" : ""}${block.hoverEffect && block.hoverEffect !== "none" ? ` data-hover-effect="${block.hoverEffect}"` : ""}`;
   const startsClosed = motionLab.enabled && motionLab.trigger === "linked" && motionLab.linkMode === "toggle" && motionLab.keyframes[0]?.opacity === 0;
   const classes = `canvas-block canvas-block--${block.type}${editing ? " is-editable" : ""}${editing && startsClosed ? " is-toggle-closed" : ""}${block.visible ? "" : " is-hidden-layer"}${layoutHidden ? " is-layout-hidden" : ""}${block.locked ? " is-locked" : ""}`;
   return `<article id="${escapeHTML(anchor)}" class="${classes}" data-block-id="${escapeHTML(block.id)}" data-entrance="${motion.entrance.preset}" data-trigger="${motion.entrance.trigger}" data-once="${motion.entrance.once}" data-loop="${motion.loop.preset}" data-hover="${motion.hover.preset}" data-parallax="${block.parallax}" data-mouse-parallax="${block.mouseParallax}"${flags} ${motionLabData} ${motionFocusable} ${visitorDraggable ? "data-public-draggable" : ""} ${lightboxAttributes} style="${style}"><div class="canvas-block__entrance"><div class="canvas-block__timeline"><div class="canvas-block__loop"><div class="canvas-block__hover"><div class="canvas-block__content"${wrapperSurface ? " data-surface" : ""} style="${visualEffectStyle(block)};${wrapperSurface}">${content}</div></div></div></div></div>${editing ? '<button class="canvas-block__resize" data-resize type="button" aria-label="크기 조절"></button>' : ""}</article>`;
@@ -1189,7 +1231,7 @@ export function archiveStudioTemplate(source, activePageId = "") {
   return `<main id="main" class="archive-page archive-page--studio">
     <div class="archive-studio" data-archive-studio data-active-page="${escapeHTML(page.id)}">
       <aside class="archive-studio__left">
-        <div class="archive-studio__brand"><strong>ARCHIVE STUDIO <b>5</b></strong><span>Responsive</span></div>
+        <div class="archive-studio__brand"><strong>ARCHIVE STUDIO <b>6</b></strong><span>Media · Responsive</span></div>
         <a class="studio-exit" href="?view=archive">← 사이트로 돌아가기</a>
         <section class="studio-panel studio-pages"><div class="studio-panel__head"><div><h2>페이지</h2><small data-page-count>${data.pages.length}개</small></div></div><div data-page-list>${pageListMarkup(data, page.id)}</div><div class="studio-page-create"><button data-action="add-page" type="button">＋ 메뉴 페이지</button><button data-action="add-unlisted-page" type="button">＋ 링크 전용</button></div></section>
         <section class="studio-panel studio-layers"><div class="studio-panel__head"><h2>레이어</h2><small>현재 페이지</small></div><div data-layer-list></div></section>
@@ -1308,10 +1350,10 @@ function inspectorMarkup(block, data, selectedFrameId = "", motionMode = false, 
   const mediaFields = block.type === "image" ? `
     ${field("이미지·GIF 링크", "src", block.src, "url")}${field("업로드 파일 경로", "media", block.media)}<div class="studio-button-row"><button class="inspector-file" data-action="pick-image" type="button">작은 파일 바로 넣기</button><button class="inspector-file" data-action="upload-media" type="button">GitHub에 업로드 ↗</button></div>
     ${field("설명(alt)", "alt", block.alt)}${field("장식 이미지", "decorative", block.decorative, "checkbox")}
-    <div class="studio-fields studio-fields--two">${field("맞춤", "objectFit", block.objectFit, "select", ["cover", "contain", "fill"].map((item) => option(item, block.objectFit)).join(""))}${field("이미지 반복", "repeat", block.repeat, "select", ["no-repeat", "repeat", "repeat-x", "repeat-y"].map((item) => option(item, block.repeat)).join(""))}${field("반복 크기", "repeatSize", block.repeatSize, "number")}</div>${field("클릭 시 크게 보기", "lightbox", block.lightbox, "checkbox")}` : "";
+    <div class="studio-fields studio-fields--two">${field("맞춤", "objectFit", block.objectFit, "select", ["cover", "contain", "fill"].map((item) => option(item, block.objectFit)).join(""))}${field("이미지 반복", "repeat", block.repeat, "select", ["no-repeat", "repeat", "repeat-x", "repeat-y"].map((item) => option(item, block.repeat)).join(""))}${field("반복 크기", "repeatSize", block.repeatSize, "number")}</div><div class="studio-fields studio-fields--two">${field("보이는 중심 X(%)", "focalX", block.focalX, "number")}${field("보이는 중심 Y(%)", "focalY", block.focalY, "number")}</div><p class="studio-help">이미지가 잘릴 때 어느 부분을 남길지예요. 50/50이 가운데, 0/0이 왼쪽 위.</p>${field("호버 효과", "hoverEffect", block.hoverEffect, "select", HOVER_EFFECTS.map((item) => option(item, block.hoverEffect, HOVER_EFFECT_LABELS[item])).join(""))}${block.hoverEffect === "swap" ? field("호버 시 보여줄 이미지 링크/경로", "hoverSrc", block.hoverSrc) : ""}${field("클릭 시 크게 보기", "lightbox", block.lightbox, "checkbox")}` : "";
   const videoFields = block.type === "video" ? `
     ${field("직접 영상 주소 (MP4·WebM)", "src", block.src, "url")}${field("업로드 파일 경로", "media", block.media)}<button class="inspector-file" data-action="upload-video" type="button">영상 파일 업로드 ↗</button><p class="studio-help">YouTube·Vimeo는 ‘임베드’ 요소를 쓰면 재생 방식이 더 정확해요. GitHub 웹 업로드는 파일당 25MB까지입니다.</p>
-    ${field("포스터 이미지", "poster", block.poster)}${field("WebVTT 자막 경로", "captions", block.captions)}${field("영상 설명", "alt", block.alt)}` : "";
+    ${field("포스터 이미지", "poster", block.poster)}${field("WebVTT 자막 경로", "captions", block.captions)}${field("영상 설명", "alt", block.alt)}<div class="studio-fields studio-fields--two">${field("보이는 중심 X(%)", "focalX", block.focalX, "number")}${field("보이는 중심 Y(%)", "focalY", block.focalY, "number")}</div>${field("호버 효과", "hoverEffect", block.hoverEffect, "select", HOVER_EFFECTS.filter((item) => item !== "swap").map((item) => option(item, block.hoverEffect, HOVER_EFFECT_LABELS[item])).join(""))}` : "";
   const audioFields = block.type === "audio" ? `${field("오디오 링크", "src", block.src, "url")}${field("업로드 파일 경로", "media", block.media)}<button class="inspector-file" data-action="upload-audio" type="button">MP3·WAV 업로드 ↗</button>${field("재생 버튼 문구", "playLabel", block.playLabel)}` : "";
   const buttonFields = block.type === "button" ? `<div class="studio-presets"><button data-button-preset="square" type="button">각진</button><button data-button-preset="round" type="button">둥근</button><button data-button-preset="pill" type="button">캡슐</button><button data-button-preset="circle" type="button">원형</button><button data-button-preset="outline" type="button">테두리</button></div>${field("배경 이미지·GIF 링크/경로", "backgroundImage", block.backgroundImage)}<button class="inspector-file" data-action="pick-button-image" type="button">작은 버튼 이미지 바로 넣기</button><button class="inspector-file" data-action="upload-media" type="button">큰 버튼 이미지 업로드 ↗</button>` : "";
   const textFields = ["text", "button", "marquee", "nav"].includes(block.type) ? `
@@ -1349,7 +1391,7 @@ function inspectorMarkup(block, data, selectedFrameId = "", motionMode = false, 
   const layoutNote = layout === "desktop" ? "" : `<div class="studio-callout studio-callout--layout"><strong>${LAYOUT_LABELS[layout]} 배치 편집 중</strong><p>여기서 바꾼 위치·크기·글자 크기는 ${LAYOUT_LABELS[layout]}에만 적용돼요. 점(●)이 붙은 칸이 이 화면 전용 값이에요.</p>${overridden ? '<button data-action="layout-reset-block" type="button">데스크톱 값으로 되돌리기</button>' : ""}</div>`;
   const fixedFields = block.fixed ? `${field("고정 기준", "fixedAnchor", block.fixedAnchor, "select", option("top", block.fixedAnchor, "화면 위쪽 기준") + option("bottom", block.fixedAnchor, "화면 아래쪽 기준"))}<p class="studio-help">스크롤해도 화면의 같은 자리에 있어요. 캔버스의 ‘첫 화면’ 점선 안에 놓으세요. 헤더·메뉴 버튼·커서 효과에 써요.</p>` : "";
   const layoutBody = `${layoutNote}${field("레이어 이름", "name", block.name)}<div class="studio-fields studio-fields--two">${lf("X", "x", block.x, "number")}${lf("Y", "y", block.y, "number")}${lf("W", "width", block.width, "number")}${lf("H", "height", block.height, "number")}${lf("회전", "rotation", block.rotation, "number")}${lf("투명도", "opacity", block.opacity, "number")}</div><div class="studio-checks">${field(`${LAYOUT_LABELS[layout]}에서 숨기기`, "layoutHidden", block.hidden, "checkbox")}${field("모든 화면에서 숨김", "visibleInverse", !block.visible, "checkbox")}${field("잠금", "locked", block.locked, "checkbox")}${field("모든 페이지에 표시", "isGlobal", isGlobal, "checkbox")}${field("화면에 고정", "fixed", block.fixed, "checkbox")}</div>${fixedFields}${field("페이지 내 위치 ID", "anchorId", block.anchorId)}<div class="inspector-actions"><button data-action="duplicate" type="button">복제</button><button data-action="back" type="button">뒤로</button><button data-action="front" type="button">앞으로</button></div>`;
-  const styleBody = `<div class="studio-fields studio-fields--two">${field("글자색", "color", block.color)}${field("배경/그라디언트", "background", block.background)}${field("선 색", "borderColor", block.borderColor)}${field("선 두께", "borderWidth", block.borderWidth, "number")}${lf("둥근 모서리", "borderRadius", block.borderRadius, "number")}${lf("안쪽 여백", "padding", block.padding, "number")}${field("블러", "blur", block.blur, "number")}${field("흑백", "grayscale", block.grayscale, "number")}</div>${field("블렌드", "blendMode", block.blendMode, "select", ["normal", "multiply", "screen", "overlay", "difference", "exclusion", "color-burn", "color-dodge"].map((item) => option(item, block.blendMode)).join(""))}<div class="studio-fields studio-fields--two">${field("그림자 X", "shadowX", block.shadowX, "number")}${field("그림자 Y", "shadowY", block.shadowY, "number")}${field("그림자 번짐", "shadowBlur", block.shadowBlur, "number")}${field("그림자 색", "shadowColor", block.shadowColor)}</div>`;
+  const styleBody = `<div class="studio-fields studio-fields--two">${field("글자색", "color", block.color)}${field("배경/그라디언트", "background", block.background)}${field("선 색", "borderColor", block.borderColor)}${field("선 두께", "borderWidth", block.borderWidth, "number")}${lf("둥근 모서리", "borderRadius", block.borderRadius, "number")}${lf("안쪽 여백", "padding", block.padding, "number")}${field("블러", "blur", block.blur, "number")}${field("흑백", "grayscale", block.grayscale, "number")}${field("대비", "contrast", block.contrast, "number")}${field("채도", "saturate", block.saturate, "number")}${field("밝기", "brightness", block.brightness, "number")}${field("색상 회전(°)", "hueRotate", block.hueRotate, "number")}${field("세피아", "sepia", block.sepia, "number")}${field("반전", "invert", block.invert, "number")}</div><p class="studio-help">대비·채도·밝기는 1이 원본, 흑백·세피아·반전은 0~1.</p>${field("모양으로 자르기", "clipShape", block.clipShape, "select", CLIP_SHAPES.map((item) => option(item, block.clipShape, CLIP_SHAPE_LABELS[item])).join(""))}${block.clipShape === "custom" ? `${field("clip-path 값", "clipCustom", block.clipCustom, "textarea")}<p class="studio-help">예: polygon(50% 0%, 100% 100%, 0% 100%) · circle(40% at 50% 50%) · inset(10% round 40px)</p>` : ""}${block.clipShape !== "none" ? '<p class="studio-help">사진·영상·갤러리·도형 모두 이 모양으로 잘려요. 그림자는 자른 모양 밖으로 나가지 않아요.</p>' : ""}${field("블렌드", "blendMode", block.blendMode, "select", ["normal", "multiply", "screen", "overlay", "difference", "exclusion", "color-burn", "color-dodge"].map((item) => option(item, block.blendMode)).join(""))}<div class="studio-fields studio-fields--two">${field("그림자 X", "shadowX", block.shadowX, "number")}${field("그림자 Y", "shadowY", block.shadowY, "number")}${field("그림자 번짐", "shadowBlur", block.shadowBlur, "number")}${field("그림자 색", "shadowColor", block.shadowColor)}</div>`;
   const visitorDragField = ["video", "audio", "embed"].includes(block.type) ? "" : field("방문자가 드래그", "publicDraggable", block.publicDraggable, "checkbox");
   const motionBody = `${field("등장", "motion.entrance.preset", block.motion.entrance.preset, "select", ["none", "fade", "rise", "fall", "slide-left", "slide-right", "scale", "blur", "rotate"].map((item) => option(item, block.motion.entrance.preset)).join(""))}<div class="studio-fields studio-fields--two">${field("트리거", "motion.entrance.trigger", block.motion.entrance.trigger, "select", option("load", block.motion.entrance.trigger, "페이지 열림") + option("scroll", block.motion.entrance.trigger, "스크롤 진입"))}${field("시간(ms)", "motion.entrance.duration", block.motion.entrance.duration, "number")}${field("지연(ms)", "motion.entrance.delay", block.motion.entrance.delay, "number")}${field("호버", "motion.hover.preset", block.motion.hover.preset, "select", ["none", "lift", "scale", "tilt", "glow", "invert", "fade"].map((item) => option(item, block.motion.hover.preset)).join("") + option("magnetic", block.motion.hover.preset, "magnetic · 자석"))}${field("반복", "motion.loop.preset", block.motion.loop.preset, "select", ["none", "float", "pulse", "spin", "bounce", "sway", "breathe"].map((item) => option(item, block.motion.loop.preset)).join(""))}${field("반복 시간(ms)", "motion.loop.duration", block.motion.loop.duration, "number")}${field("반복 방향", "motion.loop.direction", block.motion.loop.direction, "select", option("normal", block.motion.loop.direction, "정방향") + option("reverse", block.motion.loop.direction, "역방향") + option("alternate", block.motion.loop.direction, "왕복"))}${field("스크롤 패럴랙스", "parallax", block.parallax, "number")}${field("마우스 패럴랙스", "mouseParallax", block.mouseParallax, "number")}</div><div class="studio-checks">${field("스크롤 등장 한 번만", "motion.entrance.once", block.motion.entrance.once, "checkbox")}${visitorDragField}${block.fixed ? "" : field("스크롤 고정 (pin)", "pinEnabled", block.pinEnabled, "checkbox")}</div>${block.pinEnabled && !block.fixed ? `<div class="studio-fields studio-fields--two">${lf("화면 위에서 (px)", "pinTop", block.pinTop, "number")}${lf("고정 거리 (px)", "pinDistance", block.pinDistance, "number")}</div><p class="studio-help">요소 위쪽이 화면 위에서 지정한 위치에 닿으면, ‘고정 거리’만큼 스크롤하는 동안 그 자리에 머물러요. 다른 요소의 스크롤 모션과 함께 쓰면 장면이 넘어가는 스크롤 연출이 돼요.</p>` : ""}`;
   const motionLabSection = inspectorSection("MOTION LAB", "키프레임 · 타임라인 · 트리거", motionLabInspectorMarkup(block, selectedFrameId, blocks), { open: motionMode || block.motion.timeline.enabled, className: "studio-inspector-section--motion-lab" });
@@ -2457,6 +2499,102 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     containerOf(block).push(copy); selectedId = copy.id; persist(); renderSelection();
   };
 
+  // Studio 6: clipboard (works across pages and tabs), z-order shortcuts, continuous zoom, file drop.
+  const CLIPBOARD_KEY = "psj-archive-clipboard-v1";
+  const findBlock = (id) => [...data.pages.flatMap((page) => page.blocks), ...data.globals].find((item) => item.id === id);
+  const removeBlock = (block) => {
+    const container = containerOf(block);
+    const index = container.findIndex((item) => item.id === block.id);
+    if (index >= 0) container.splice(index, 1);
+    if (selectedId === block.id) selectedId = "";
+  };
+  const copySelected = ({ cut = false } = {}) => {
+    const block = selected();
+    if (!block) return;
+    if (cut && block.locked) { status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); return; }
+    try { localStorage.setItem(CLIPBOARD_KEY, JSON.stringify({ pageId: activePageId, block: clone(block) })); }
+    catch (error) { status("복사 실패 · 브라우저 저장 공간을 확인하세요"); return; }
+    if (cut) { removeBlock(block); persist(); renderSelection(); }
+    status(cut ? "잘라냈어요 · Ctrl+V로 붙여넣기" : "복사했어요 · Ctrl+V로 붙여넣기 (다른 페이지에서도 돼요)");
+  };
+  const pasteBlock = () => {
+    let payload = null;
+    try { payload = JSON.parse(localStorage.getItem(CLIPBOARD_KEY) || "null"); } catch (error) { payload = null; }
+    if (!payload?.block) { status("붙여넣을 요소가 없어요 · 먼저 요소를 고르고 Ctrl+C"); return; }
+    const copy = normalizeBlock({ ...payload.block, id: uid(payload.block.type || "block"), z: Math.max(0, ...allBlocks().map((item) => item.z)) + 1 }, currentPage().blocks.length);
+    const placed = view(copy);
+    const overlaps = allBlocks().some((item) => { const other = view(item); return Math.abs(other.x - placed.x) < 2 && Math.abs(other.y - placed.y) < 2; });
+    if (overlaps) { setLayoutValue(copy, "x", placed.x + 24); setLayoutValue(copy, "y", placed.y + 24); }
+    currentPage().blocks.push(copy); selectedId = copy.id; persist(); renderSelection();
+    status(payload.pageId === activePageId ? "붙여넣었어요" : "다른 페이지의 요소를 붙여넣었어요");
+  };
+  const reorderBlock = (block, step, toEnd = false) => {
+    const order = [...allBlocks()].sort((a, b) => a.z - b.z);
+    const index = order.findIndex((item) => item.id === block.id);
+    const target = toEnd ? (step > 0 ? order.length - 1 : 0) : Math.min(order.length - 1, Math.max(0, index + step));
+    if (index < 0 || target === index) return;
+    order.splice(index, 1); order.splice(target, 0, block);
+    order.forEach((item, position) => { item.z = position + 1; });
+    persist(); renderSelection();
+    status(step > 0 ? (toEnd ? "맨 앞으로 보냈어요" : "한 칸 앞으로") : (toEnd ? "맨 뒤로 보냈어요" : "한 칸 뒤로"));
+  };
+  // Continuous zoom (10–200%). The <select> grows a custom option so odd values still show.
+  const setZoom = (value, anchor = null) => {
+    const workspaceNode = studio.querySelector(".archive-studio__workspace");
+    const previous = zoom;
+    zoom = Math.min(2, Math.max(0.1, Math.round(value * 100) / 100));
+    const select = studio.querySelector("[data-zoom]");
+    if (select) {
+      let match = [...select.options].find((item) => !item.dataset.customZoom && Number(item.value) === zoom);
+      if (!match) {
+        match = select.querySelector("[data-custom-zoom]") || select.appendChild(document.createElement("option"));
+        match.dataset.customZoom = "1"; match.value = String(zoom); match.textContent = `${Math.round(zoom * 100)}%`;
+      }
+      select.value = String(zoom);
+    }
+    applyZoom();
+    if (anchor && workspaceNode && previous !== zoom) {
+      const ratio = zoom / previous;
+      workspaceNode.scrollLeft = (workspaceNode.scrollLeft + anchor.x) * ratio - anchor.x;
+      workspaceNode.scrollTop = (workspaceNode.scrollTop + anchor.y) * ratio - anchor.y;
+    }
+  };
+  // Dropped or pasted files become blocks at that spot: small images inline (data URL), bigger files get a /media path to upload.
+  let lastInsertMessage = "";
+  const insertFiles = (files, point = null) => {
+    const list = [...files].filter((file) => /^(image|video|audio)\//.test(file.type)).slice(0, 20);
+    if (!list.length) return false;
+    const page = currentPage();
+    const box = layoutBox(page, activeLayout());
+    const current = activeLayout();
+    const ids = [];
+    list.forEach((file, offset) => {
+      const type = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "audio";
+      const block = defaultBlock(type, page);
+      const width = type === "audio" ? 420 : Math.min(480, box.width - 40); const height = type === "audio" ? 64 : 320;
+      block.width = width; block.height = height;
+      block.name = file.name.replace(/\.[^.]+$/, "").slice(0, 40) || block.name;
+      const x = point ? Math.round(Math.min(Math.max(0, point.x - width / 2), Math.max(0, box.width - width)) + offset * 24) : block.x;
+      const y = point ? Math.round(Math.max(0, point.y - height / 2) + offset * 24) : block.y;
+      if (current === "desktop") { block.x = x; block.y = y; }
+      const inline = type === "image" && file.size <= 1_500_000;
+      if (!inline) block.media = `/media/${file.name.replace(/[^\w.-]+/g, "-")}`;
+      addBlock(block);
+      if (current !== "desktop" && point) { const placed = findBlock(block.id); if (placed) { setLayoutValue(placed, "x", x); setLayoutValue(placed, "y", y); } }
+      ids.push(block.id);
+      if (inline) {
+        const reader = new FileReader();
+        reader.onload = () => { const target = findBlock(block.id); if (!target) return; target.src = String(reader.result); target.media = ""; persist(); renderSelection(); if (lastInsertMessage) status(lastInsertMessage); };
+        reader.readAsDataURL(file);
+      }
+    });
+    if (current !== "desktop" && point) { persist(); renderSelection(); }
+    const big = list.filter((file) => !(file.type.startsWith("image/") && file.size <= 1_500_000));
+    lastInsertMessage = big.length ? `${list.length}개 추가 · 큰 파일 ${big.length}개는 GitHub media 폴더에 같은 이름으로 올려야 보여요 (/media/파일명)` : `${list.length}개 추가했어요`;
+    status(lastInsertMessage);
+    return true;
+  };
+
   // A first-guess text height for 자동 정렬, measured with the real font.
   const measureText = (block, width) => {
     if (block.type !== "text") return 0;
@@ -2851,7 +2989,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     if (event.target.matches("[data-motion-speed]")) { motionPreviewSpeed = number(event.target.value, 1, .5, 2); renderMotionDock(); return; }
     if (event.target.matches("[data-motion-preview-mode]")) { motionPreviewMode = event.target.value; scrubStudioMotion(motionPlayhead); return; }
     if (event.target.matches('[data-field="page.name"],[data-field="page.slug"],[data-field="page.visibility"]')) { renderPages(); renderInspector(); }
-    if (event.target.matches('[data-field="action.type"],[data-field="playbackMode"],[data-field="embedMode"],[data-field="navMode"],[data-field="fixedAnchor"]')) renderInspector();
+    if (event.target.matches('[data-field="action.type"],[data-field="playbackMode"],[data-field="embedMode"],[data-field="navMode"],[data-field="fixedAnchor"],[data-field="clipShape"],[data-field="hoverEffect"]')) renderInspector();
     if (event.target.matches('[data-field^="motion.timeline"]')) { selectedMotionFrame(); renderInspector(); renderMotionDock(); scrubStudioMotion(motionPlayhead); }
   });
 
@@ -2867,6 +3005,33 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     reader.onload = () => { try { data = normalizeArchiveData(JSON.parse(String(reader.result))); activePageId = data.settings.defaultPageId; selectedId = ""; draftBase = fingerprint(published); draftConflict = false; persist(); renderSelection({ pages: true }); status("JSON 프로젝트를 불러왔어요"); } catch (error) { alert("올바른 Archive JSON 파일이 아니에요."); } };
     reader.readAsText(file); event.target.value = "";
   });
+
+  const workspaceNode = studio.querySelector(".archive-studio__workspace");
+  workspaceNode?.addEventListener("wheel", (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    const rect = workspaceNode.getBoundingClientRect();
+    setZoom(zoom * Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0025)), { x: event.clientX - rect.left, y: event.clientY - rect.top });
+  }, { passive: false });
+  workspaceNode?.addEventListener("dragover", (event) => {
+    if (![...(event.dataTransfer?.types || [])].includes("Files")) return;
+    event.preventDefault(); event.dataTransfer.dropEffect = "copy"; workspaceNode.classList.add("is-dropping");
+  });
+  workspaceNode?.addEventListener("dragleave", (event) => { if (!workspaceNode.contains(event.relatedTarget)) workspaceNode.classList.remove("is-dropping"); });
+  workspaceNode?.addEventListener("drop", (event) => {
+    workspaceNode.classList.remove("is-dropping");
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    const rect = studio.querySelector(".archive-studio__board")?.getBoundingClientRect();
+    insertFiles(event.dataTransfer.files, rect ? { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom } : null);
+  });
+  const handlePaste = (event) => {
+    if (/input|textarea|select/i.test(document.activeElement?.tagName || "") || document.activeElement?.isContentEditable) return;
+    const files = [...(event.clipboardData?.files || [])];
+    event.preventDefault();
+    if (files.length) insertFiles(files, null); else pasteBlock();
+  };
+  addEventListener("paste", handlePaste);
 
   studio.addEventListener("pointerdown", (event) => {
     const blockElement = event.target.closest(".canvas-block"); if (!blockElement || !canvas()?.contains(blockElement)) return;
@@ -2930,9 +3095,17 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   studio.addEventListener("pointerup", finishDrag); studio.addEventListener("pointercancel", finishDrag);
 
   const handleKeydown = (event) => {
-    const typing = /input|textarea|select/i.test(document.activeElement?.tagName || "");
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") { event.preventDefault(); restoreHistory(historyIndex + (event.shiftKey ? 1 : -1)); return; }
-    if (typing || !selected()) return;
+    const typing = /input|textarea|select/i.test(document.activeElement?.tagName || "") || Boolean(document.activeElement?.isContentEditable);
+    const combo = event.metaKey || event.ctrlKey;
+    if (combo && event.key.toLowerCase() === "z") { event.preventDefault(); restoreHistory(historyIndex + (event.shiftKey ? 1 : -1)); return; }
+    if (typing) return;
+    if (combo && event.key === "0") { event.preventDefault(); fitZoom(); applyZoom(); status(`화면 맞춤 · ${Math.round(zoom * 100)}%`); return; }
+    if (combo && ["=", "+", "-", "_"].includes(event.key)) { event.preventDefault(); setZoom(zoom * (["-", "_"].includes(event.key) ? 1 / 1.25 : 1.25)); status(`확대 ${Math.round(zoom * 100)}%`); return; }
+    if (event.key === "Escape" && selectedId && !drag) { selectedId = ""; renderSelection(); return; }
+    if (!selected()) return;
+    if (combo && event.key.toLowerCase() === "c") { event.preventDefault(); copySelected(); return; }
+    if (combo && event.key.toLowerCase() === "x") { event.preventDefault(); copySelected({ cut: true }); return; }
+    if (combo && ["BracketRight", "BracketLeft"].includes(event.code)) { event.preventDefault(); reorderBlock(selected(), event.code === "BracketRight" ? 1 : -1, event.shiftKey); return; }
     if (selected().locked) { if (["Backspace", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key) || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d")) { event.preventDefault(); status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); } return; }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateBlock(selected()); return; }
     if (["Backspace", "Delete"].includes(event.key)) { event.preventDefault(); const container = containerOf(selected()); container.splice(container.findIndex((block) => block.id === selectedId), 1); selectedId = currentPage().blocks.at(-1)?.id || ""; persist(); renderSelection(); return; }
@@ -2955,5 +3128,5 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   if (!initiallySaved) status("자동 저장 실패 — JSON 백업을 눌러주세요");
   else if (draftConflict) status("게시본이 변경됐어요 · 백업 후 비교하고 게시하세요");
   loadComponentMetas().then(() => { if (disposed) return; renderComponentLibrary(); if (selected()?.type === "component") renderInspector(); renderCanvas(); }).catch((error) => console.warn("Component list could not load.", error));
-  return () => { disposed = true; clearTimeout(deferredRender); clearStudioMotion(); destroyEditorComponents(); saveDraft(data, published, draftBase); removeEventListener("keydown", handleKeydown); document.querySelector(".studio-device")?.remove(); };
+  return () => { disposed = true; clearTimeout(deferredRender); clearStudioMotion(); destroyEditorComponents(); saveDraft(data, published, draftBase); removeEventListener("keydown", handleKeydown); removeEventListener("paste", handlePaste); document.querySelector(".studio-device")?.remove(); };
 }

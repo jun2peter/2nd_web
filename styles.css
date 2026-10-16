@@ -726,3 +726,23 @@ html.vt-blur::view-transition-new(root) { animation: vt-blur-in var(--page-trans
   .studio-topbar__context span { display: none; }
   .archive-studio__topbar .studio-breakpoints button { padding: 5px 7px; }
 }
+
+/* ===== Archive Studio 6: focal point · hover effects · clip shapes · studio drop zone ===== */
+.canvas-block__content img, .canvas-block__content video { object-position: var(--focal, 50% 50%); }
+.canvas-block[data-hover-effect] .canvas-block__content { overflow: hidden; position: relative; }
+.canvas-block[data-hover-effect] .canvas-block__content img, .canvas-block[data-hover-effect] .canvas-block__content video { transition: transform .7s cubic-bezier(.22,1,.36,1), filter .5s ease, opacity .5s ease; }
+.canvas-block[data-hover-effect="lift"] .canvas-block__content { transition: transform .5s cubic-bezier(.22,1,.36,1), box-shadow .5s ease; }
+.canvas-block[data-hover-effect="color"] .canvas-block__content img, .canvas-block[data-hover-effect="color"] .canvas-block__content video { filter: grayscale(1); }
+.canvas-hover-swap { inset: 0; opacity: 0; position: absolute; }
+@media (hover: hover) {
+  .canvas-block[data-hover-effect="zoom"]:hover .canvas-block__content img, .canvas-block[data-hover-effect="zoom"]:hover .canvas-block__content video { transform: scale(1.07); }
+  .canvas-block[data-hover-effect="color"]:hover .canvas-block__content img, .canvas-block[data-hover-effect="color"]:hover .canvas-block__content video { filter: grayscale(0); }
+  .canvas-block[data-hover-effect="gray"]:hover .canvas-block__content img, .canvas-block[data-hover-effect="gray"]:hover .canvas-block__content video { filter: grayscale(1); }
+  .canvas-block[data-hover-effect="bright"]:hover .canvas-block__content img, .canvas-block[data-hover-effect="bright"]:hover .canvas-block__content video { filter: brightness(1.18); }
+  .canvas-block[data-hover-effect="lift"]:hover .canvas-block__content { box-shadow: 0 24px 48px rgba(0,0,0,.18); transform: translateY(-8px); }
+  .canvas-block[data-hover-effect="swap"]:hover .canvas-hover-swap { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-block[data-hover-effect] .canvas-block__content img, .canvas-block[data-hover-effect] .canvas-block__content video, .canvas-block[data-hover-effect="lift"] .canvas-block__content { transition: none; }
+}
+.archive-studio__workspace.is-dropping { box-shadow: inset 0 0 0 3px var(--studio-accent, #2f6bff); }

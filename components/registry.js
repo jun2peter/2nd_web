@@ -8,4 +8,8 @@ export const COMPONENTS = [
   "particle-text",
   "orb-3d",
   "cursor-trail",
+  "scroll-sequence",
+  "media-text",
+  "hover-reveal",
+  "compare-slider",
 ];

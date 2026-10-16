@@ -10,7 +10,7 @@ import {
   normalizeArchiveData,
   resolveArchivePage,
   syncArchiveFontStylesheet,
-} from "./archive-editor.js?v=studio5";
+} from "./archive-editor.js?v=studio6";
 
 const app = document.querySelector("#app");
 
