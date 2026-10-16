@@ -1,5 +1,6 @@
 import {
   archiveCanvasMarkup,
+  archiveFixedLayerMarkup,
   archiveSiteChromeMarkup,
   archiveStudioTemplate,
   bindArchiveStudio,
@@ -9,7 +10,7 @@ import {
   normalizeArchiveData,
   resolveArchivePage,
   syncArchiveFontStylesheet,
-} from "./archive-editor.js?v=motionlab4";
+} from "./archive-editor.js?v=studio5";
 
 const app = document.querySelector("#app");
 
@@ -39,9 +40,12 @@ function safeURL(value = "") {
   return escapeHTML(url);
 }
 
+const archiveIsHome = () => Boolean(state.archiveCanvas) && normalizeArchiveData(state.archiveCanvas).settings.homeView === "archive";
+
 function routeURL({ view, work, page } = {}) {
   const params = new URLSearchParams();
   if (view === "archive") params.set("view", "archive");
+  if (view === "experience" && archiveIsHome()) params.set("view", "experience");
   if (work) params.set("work", work);
   if (page) params.set("page", page);
   const query = params.toString();
@@ -51,7 +55,7 @@ function routeURL({ view, work, page } = {}) {
 function viewSwitch(active = "experience", tone = "dark") {
   return `
     <nav class="view-switch view-switch--${tone}" aria-label="Choose portfolio view">
-      <a data-route href="${routeURL()}" class="${active === "experience" ? "is-active" : ""}" ${active === "experience" ? 'aria-current="page"' : ""}>Experience</a>
+      <a data-route href="${routeURL({ view: "experience" })}" class="${active === "experience" ? "is-active" : ""}" ${active === "experience" ? 'aria-current="page"' : ""}>Experience</a>
       <span aria-hidden="true">/</span>
       <a data-route href="${routeURL({ view: "archive" })}" class="${active === "archive" ? "is-active" : ""}" ${active === "archive" ? 'aria-current="page"' : ""}>Archive</a>
     </nav>`;
@@ -186,10 +190,12 @@ function archiveTemplate({ editing = false, draft = false, pageSlug = "" } = {})
   document.documentElement.style.setProperty("--page-transition-color", documentData.settings.transition.color);
   syncArchiveFontStylesheet(documentData, page.id);
   if (editing) return archiveStudioTemplate(documentData, page.id);
-  return `<main id="main" class="archive-page archive-transition-${escapeHTML(documentData.settings.transition.preset)}" style="--page-transition-duration:${documentData.settings.transition.duration}ms;--page-transition-easing:${escapeHTML(documentData.settings.transition.easing)};--page-transition-color:${escapeHTML(documentData.settings.transition.color)}">
-    <header class="archive-canvas-nav">${viewSwitch("archive", "light")}</header>
+  const hideSwitch = documentData.settings.hideViewSwitch;
+  return `<main id="main" class="archive-page archive-transition-${escapeHTML(documentData.settings.transition.preset)}" style="--page-transition-duration:${documentData.settings.transition.duration}ms;--page-transition-easing:${escapeHTML(documentData.settings.transition.easing)};--page-transition-color:${escapeHTML(documentData.settings.transition.color)};background-color:${escapeHTML(page.canvas.background)}">
+    ${hideSwitch ? "" : `<header class="archive-canvas-nav">${viewSwitch("archive", "light")}</header>`}
     ${archiveSiteChromeMarkup(documentData, page, { draft: localDraft })}
-    <div class="archive-canvas-viewport"><div class="archive-canvas-sizer" data-archive-sizer>${archiveCanvasMarkup(documentData, page, { draft: localDraft })}</div></div>
+    <div class="archive-canvas-viewport${hideSwitch ? " archive-canvas-viewport--full" : ""}"><div class="archive-canvas-sizer" data-archive-sizer>${archiveCanvasMarkup(documentData, page, { draft: localDraft })}</div></div>
+    ${archiveFixedLayerMarkup(documentData, page, { draft: localDraft })}
   </main>`;
 }
 
@@ -241,8 +247,12 @@ function bindRouteLinks() {
       };
       const transition = state.activeArchiveCanvas?.settings?.transition?.preset;
       if (document.startViewTransition && transition && transition !== "none" && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        document.documentElement.classList.add("archive-native-transition");
-        document.startViewTransition(navigate).finished.finally(() => document.documentElement.classList.remove("archive-native-transition"));
+        const root = document.documentElement;
+        const fromPointer = event.clientX || event.clientY;
+        root.style.setProperty("--vt-x", fromPointer ? `${event.clientX}px` : "50%");
+        root.style.setProperty("--vt-y", fromPointer ? `${event.clientY}px` : "50%");
+        root.classList.add("archive-native-transition", `vt-${transition}`);
+        document.startViewTransition(navigate).finished.finally(() => root.classList.remove("archive-native-transition", `vt-${transition}`));
       }
       else navigate();
     });
@@ -454,7 +464,7 @@ function render({ preserveScroll = false } = {}) {
   clearPageEffects();
   const params = new URLSearchParams(location.search);
   const work = params.get("work");
-  const archive = params.get("view") === "archive";
+  const archive = params.get("view") === "archive" || (!params.get("view") && !work && archiveIsHome());
   const archiveEditing = archive && params.get("edit") === "1";
   const archiveDraft = archive && params.get("draft") === "1";
   const archivePageSlug = archive ? params.get("page") || "" : "";

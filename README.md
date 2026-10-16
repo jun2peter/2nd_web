@@ -6,11 +6,39 @@ MIT Media Lab 지원과 장기 작품 아카이빙을 함께 고려한 포트폴
 
 - 기본 화면 — **Experience**: 작품을 전시처럼 천천히 경험하는 인터랙티브 버전
 - `?view=archive` — **Archive**: 흰색 자유 배치 멀티페이지 사이트
-- `?view=archive&edit=1` — **Archive Studio 4 · Motion Lab**: 피그마처럼 페이지와 요소를 만들고 키프레임까지 편집하는 화면
+- `?view=archive&edit=1` — **Archive Studio 5**: 피그마처럼 페이지와 요소를 만들고, Desktop·Tablet·Mobile 배치와 키프레임 모션까지 편집하는 화면
 - `?view=archive&page=페이지주소` — Archive의 다른 공개·링크 전용 페이지
 - `?work=작품주소` — Experience에서 여는 작품 상세 페이지
 
-Experience의 작품 데이터와 Archive의 자유 배치 데이터는 분리되어 있습니다. Archive 화면은 `content/archive.json`의 v4 멀티페이지·미디어·Motion Lab 데이터를 읽습니다. 예전 v1 단일 캔버스와 v2·v3 로컬 초안도 열 때 자동 변환됩니다.
+Experience의 작품 데이터와 Archive의 자유 배치 데이터는 분리되어 있습니다. Archive 화면은 `content/archive.json`의 v5 데이터를 읽습니다. 예전 v1–v4 데이터와 로컬 초안도 열 때 자동 변환됩니다. 사이트 설정의 **첫 화면**을 Archive로 바꾸면 빌더로 만든 페이지가 사이트의 첫 화면이 됩니다.
+
+## Archive Studio 5 — 새로 생긴 것
+
+**반응형 (Desktop · Tablet · Mobile)**
+- 상단의 Desktop / Tablet / Mobile 버튼으로 화면 크기마다 배치를 따로 편집합니다. Tablet·Mobile에서 바꾼 위치·크기·글자 크기·여백만 그 화면에 저장되고, 글·이미지·색·모션은 모든 화면이 함께 씁니다.
+- 처음 Mobile을 누르면 **자동 정렬로 만들기**(읽기 좋은 세로 한 줄) 또는 **비율대로 줄여서 시작**을 고릅니다. 화면을 꽉 채우던 첫 화면은 폰에서도 화면을 꽉 채우고, 나란히 있던 카드는 한 줄에 하나로 쌓입니다.
+- 레이어마다 "Mobile에서 숨기기"처럼 화면별로 숨길 수 있습니다. 점(●)이 붙은 칸이 그 화면 전용 값이고, "데스크톱 값으로 되돌리기"로 지울 수 있습니다.
+- 캔버스의 파란 점선은 **첫 화면**(스크롤 없이 보이는 높이)입니다.
+- **기기 미리보기**: 편집기 안에서 Phone 390 · Tablet 834 · Desktop 1440 크기로 실제 사이트(초안)를 띄워 봅니다.
+- 사이트 설정 → 반응형 기준 폭(기본: 1199px 이하 Tablet, 767px 이하 Mobile), 화면 맞춤(화면 폭에 꽉 채움 / 원래 크기까지만).
+
+**무엇이든 넣기**
+- **컴포넌트**: `components/` 폴더의 효과 파일. 요소 추가 → 컴포넌트 목록에서 넣고, 색·속도·글자는 오른쪽 패널에서 바꿉니다. 기본 제공: 그레인 그라디언트, 리퀴드 이미지, 드래그 갤러리, 키네틱 타이틀, 입자 텍스트, 3D 오브, 커서 트레일. 만드는 법은 [docs/COMPONENTS.md](docs/COMPONENTS.md).
+- **코드 블록**: HTML·CSS·JS를 붙여넣으면 그 상자 안에서 실행됩니다(사이트와 분리된 안전한 상자). CodePen 예제나 다른 Claude가 준 코드를 바로 넣을 때.
+
+**레이아웃·인터랙션**
+- **화면에 고정**: 스크롤해도 화면의 같은 자리에 있는 헤더·메뉴 버튼. 화면을 꽉 채우는 고정 패널은 실제 폰 화면 높이를 따라갑니다.
+- **모든 페이지에 표시**: 헤더·메뉴처럼 모든 페이지에 같은 레이어를 한 번에.
+- **다른 레이어와 연결(메뉴·토글)**: 레이어 A를 클릭/호버/누르면 레이어 B의 모션이 열리고 다시 누르면 닫힙니다. 첫 키프레임 투명도가 0이면 닫힌 동안 클릭이 통과하고, Esc로 닫힙니다. Motion Lab 프리셋 `Menu panel`로 바로 시작할 수 있습니다.
+- **스크롤 고정(pin)**: 요소가 화면 위 지정 위치에 닿으면 정한 거리만큼 스크롤하는 동안 멈춰 있습니다.
+
+**모션**
+- 스크롤 모션: 구간(화면을 지나가는 동안 / 가운데 올 때까지 / 페이지 전체)과 **따라오는 부드러움**(0–0.95).
+- 키프레임 **마스크**(위·오른쪽·아래·왼쪽 %) — 아래에서 열리는 사진, 옆으로 닦이는 제목 같은 마스크 연출. 새 프리셋: Mask up, Mask wipe, Zoom reveal, Flip in, Drop bounce, Float 3D, Menu panel.
+- 글자 효과: **글자별 등장 / 단어별 등장**. 호버: **magnetic(자석)**.
+- 사이트 설정: **부드러운 스크롤**(Lenis), 커서 **링 / 반전 원**, 페이지 전환 **와이프 / 원형(누른 곳에서 퍼짐) / 블러**.
+
+**다른 Claude에게 일 시키기**: 이 폴더를 연 Claude는 [CLAUDE.md](CLAUDE.md)를 먼저 읽습니다. 요청 문장 틀은 [docs/REQUEST_TEMPLATES.md](docs/REQUEST_TEMPLATES.md).
 
 ## Archive Studio 사용법
 
@@ -28,7 +56,7 @@ Experience의 작품 데이터와 Archive의 자유 배치 데이터는 분리�
 12. 작업 내용은 현재 브라우저에 자동 저장되며 실행 취소·다시 실행, JSON 백업·불러오기를 지원합니다.
 13. **게시 파일 준비**를 누르면 완성된 JSON이 복사되고 GitHub 편집 화면이 열립니다. 전체 내용을 붙여넣고 **Commit changes**를 누르면 공개 사이트에 반영됩니다. 이 버튼만으로 자동 게시되지는 않습니다.
 
-## Archive Studio 4 · Motion Lab 기능
+## Motion Lab과 기본 기능 (Studio 4부터)
 
 - 메뉴 페이지와 링크 전용 페이지를 별도 버튼으로 생성, 페이지 그룹·복제·삭제·순서 변경·홈페이지 지정
 - 메뉴에 보이는 공개 페이지, 버튼으로만 들어가는 링크 전용 페이지, 공개되지 않는 초안 페이지
@@ -49,7 +77,7 @@ Experience의 작품 데이터와 Archive의 자유 배치 데이터는 분리�
 
 v4는 [Figma Motion](https://www.figma.com/blog/introducing-figma-motion/)의 Design/Motion 모드와 타임라인, [Figma Sites interactions](https://help.figma.com/hc/en-us/articles/31242843431575-Add-interactions-to-an-element), [Framer scroll transform](https://www.framer.com/academy/lessons/framer-animations-scroll-transform), [Readymag animation](https://help.readymag.com/hc/en-us/articles/360020527292-Animation), [Webflow timeline](https://help.webflow.com/hc/en-us/articles/42861689104531-Timeline-in-Interactions-with-GSAP)의 장점을 비교해 이 저장소에 맞게 단순화했습니다.
 
-현재 Motion Lab은 **레이어별 키프레임 v1**입니다. 여러 레이어는 하단 타임라인에서 함께 스크럽·재생하고 `순차 등장`으로 시퀀스를 만들 수 있지만, 하나의 클릭이 여러 레이어의 서로 다른 모션 장면을 동시에 실행하는 scene/variant orchestration은 다음 확장 범위입니다. 기존 빠른 애니메이션과 Motion Lab은 서로 다른 wrapper에서 합성되므로 함께 사용할 수 있습니다.
+Motion Lab은 레이어별 키프레임입니다. 하나의 클릭이 여러 레이어를 함께 움직이게 하려면, 각 레이어의 시작 조건을 **다른 레이어와 연결**로 두고 같은 레이어(예: 메뉴 버튼)를 고르세요. 지연(ms)을 다르게 주면 순서대로 움직입니다. 기존 빠른 애니메이션과 Motion Lab은 서로 다른 wrapper에서 합성되므로 함께 사용할 수 있습니다.
 
 작은 이미지와 GIF는 편집기에서 바로 불러올 수 있습니다. 큰 이미지·GIF와 짧은 MP4·WebM·MP3 파일은 편집기의 업로드 버튼 또는 Pages CMS의 Media에 올린 뒤 `/media/파일명`을 사용하세요. 링크와 업로드를 모두 지원합니다. GitHub 웹 업로드는 파일당 25MB 제한이 있으므로 긴 영상은 YouTube·Vimeo 같은 외부 영상 링크 사용을 권장합니다. 100MB에 가까운 영상을 Git 저장소에 반복해서 넣으면 사이트 전체 용량과 방문자 로딩이 빠르게 커집니다.
 

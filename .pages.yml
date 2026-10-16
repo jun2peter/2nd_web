@@ -83,7 +83,7 @@ content:
       - { name: featured, type: boolean }
 
   - name: archive
-    label: Archive Studio 4 · Motion Lab
+    label: Archive Studio 5 · Responsive
     type: file
     path: content/archive.json
     format: json
@@ -94,6 +94,29 @@ content:
         type: object
         fields:
           - { name: defaultPageId, label: 홈페이지 ID, type: string }
+          - name: homeView
+            label: 첫 화면
+            type: select
+            options:
+              values: [experience, archive]
+          - name: scaleMode
+            label: 화면 맞춤
+            type: select
+            options:
+              values: [fit, max-100]
+          - { name: hideViewSwitch, label: 상단 전환 막대 숨김, type: boolean }
+          - name: responsive
+            label: 반응형 기준 폭
+            type: object
+            fields:
+              - { name: tabletMax, label: 태블릿 배치 (이 폭 이하), type: number }
+              - { name: mobileMax, label: 모바일 배치 (이 폭 이하), type: number }
+          - name: smoothScroll
+            label: 부드러운 스크롤
+            type: object
+            fields:
+              - { name: enabled, label: 사용, type: boolean }
+              - { name: intensity, label: 부드러움 (0.02–0.5), type: number }
           - name: transition
             label: 페이지 전환
             type: object
@@ -101,7 +124,7 @@ content:
               - name: preset
                 type: select
                 options:
-                  values: [none, fade, slide, zoom]
+                  values: [none, fade, slide, zoom, wipe, circle, blur]
               - { name: duration, label: 시간(ms), type: number }
               - { name: easing, type: string }
               - { name: color, label: 전환 배경색, type: string }
@@ -111,7 +134,7 @@ content:
           - name: cursor
             type: select
             options:
-              values: [default, dot, crosshair]
+              values: [default, dot, crosshair, ring, blend]
           - { name: cursorColor, label: 커서 색, type: string }
           - name: seo
             label: 기본 SEO
@@ -146,6 +169,25 @@ content:
               - { name: background, label: 배경색, type: string }
               - { name: grid, label: 스냅 간격, type: number }
               - { name: fontStylesheet, label: 웹폰트 CSS 주소, type: string }
+              - { name: viewport, label: 첫 화면 높이, type: number }
+          - name: layouts
+            label: 태블릿·모바일 배치
+            type: object
+            fields:
+              - name: tablet
+                type: object
+                fields:
+                  - { name: enabled, label: 사용, type: boolean }
+                  - { name: width, label: 너비, type: number }
+                  - { name: height, label: 페이지 길이, type: number }
+                  - { name: viewport, label: 첫 화면 높이, type: number }
+              - name: mobile
+                type: object
+                fields:
+                  - { name: enabled, label: 사용, type: boolean }
+                  - { name: width, label: 너비, type: number }
+                  - { name: height, label: 페이지 길이, type: number }
+                  - { name: viewport, label: 첫 화면 높이, type: number }
           - name: seo
             label: 페이지 SEO
             type: object
@@ -169,7 +211,7 @@ content:
                 label: 요소 종류
                 type: select
                 options:
-                  values: [text, image, video, audio, button, shape, line, marquee, gallery, embed, nav]
+                  values: [text, image, video, audio, button, shape, line, marquee, gallery, embed, nav, component, code]
               - { name: visible, label: 보이기, type: boolean }
               - { name: locked, label: 잠금, type: boolean }
               - { name: anchorId, label: 위치 ID, type: string }
@@ -311,6 +353,24 @@ content:
               - { name: parallax, label: 스크롤 패럴랙스, type: number }
               - { name: mouseParallax, label: 마우스 패럴랙스, type: number }
               - { name: publicDraggable, label: 방문자 드래그, type: boolean }
+              - { name: component, label: 컴포넌트 이름 (components/registry.js), type: string }
+              - name: code
+                label: 코드 블록
+                type: object
+                fields:
+                  - { name: html, label: HTML, type: code }
+                  - { name: css, label: CSS, type: code }
+                  - { name: js, label: JavaScript, type: code }
+              - { name: codeInteractive, label: 코드 블록 조작 허용, type: boolean }
+              - { name: fixed, label: 화면에 고정, type: boolean }
+              - name: fixedAnchor
+                label: 고정 기준
+                type: select
+                options:
+                  values: [top, bottom]
+              - { name: pinEnabled, label: 스크롤 고정 (pin), type: boolean }
+              - { name: pinTop, label: 고정 위치 (화면 위에서 px), type: number }
+              - { name: pinDistance, label: 고정 거리 (px), type: number }
               - name: motion
                 label: 애니메이션
                 type: object
@@ -346,7 +406,7 @@ content:
                         label: 시작 조건
                         type: select
                         options:
-                          values: [load, in-view, hover, press, click, scroll]
+                          values: [load, in-view, hover, press, click, scroll, linked]
                       - { name: duration, label: 시간(ms), type: number }
                       - { name: delay, label: 지연(ms), type: number }
                       - { name: iterations, label: 반복 횟수, type: number }
@@ -367,6 +427,23 @@ content:
                           values: [center, top, top-right, right, bottom-right, bottom, bottom-left, left, top-left]
                       - { name: perspective, label: 3D 원근, type: number }
                       - { name: once, label: 한 번만 재생, type: boolean }
+                      - { name: linkTarget, label: 연결할 레이어 ID, type: string }
+                      - name: linkEvent
+                        label: 연결 이벤트
+                        type: select
+                        options:
+                          values: [click, hover, press, in-view]
+                      - name: linkMode
+                        label: 연결 동작
+                        type: select
+                        options:
+                          values: [toggle, restart]
+                      - name: scrollRange
+                        label: 스크롤 구간
+                        type: select
+                        options:
+                          values: [element, enter, page]
+                      - { name: scrubSmooth, label: 스크롤 따라오는 부드러움 (0–0.95), type: number }
                       - name: keyframes
                         label: 키프레임
                         type: object
@@ -391,6 +468,10 @@ content:
                           - { name: brightness, label: 밝기, type: number }
                           - { name: saturate, label: 채도, type: number }
                           - { name: hue, label: 색상 회전, type: number }
+                          - { name: clipTop, label: 마스크 위 (%), type: number }
+                          - { name: clipRight, label: 마스크 오른쪽 (%), type: number }
+                          - { name: clipBottom, label: 마스크 아래 (%), type: number }
+                          - { name: clipLeft, label: 마스크 왼쪽 (%), type: number }
                           - { name: easing, label: 이징, type: string }
 
   - name: notes

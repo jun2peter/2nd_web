@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Component Playground</title>
+    <link rel="stylesheet" href="../styles.css?v=studio5" />
+    <style>
+      body { background: #d9d9d6; color: #111; font: 12px Arial, sans-serif; margin: 0; }
+      .playground { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 100vh; }
+      .playground aside { background: #fbfbfa; border-right: 1px solid #ccc; overflow: auto; padding: 16px; }
+      .playground h1 { font: 600 11px/1.2 monospace; letter-spacing: .08em; margin: 0 0 4px; text-transform: uppercase; }
+      .playground p { color: #666; line-height: 1.5; margin: 0 0 14px; }
+      .playground label { display: block; margin-bottom: 10px; }
+      .playground label span { color: #666; display: block; font-size: 10px; margin-bottom: 4px; }
+      .playground input:not([type="checkbox"]), .playground select, .playground textarea { background: #fff; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; min-height: 30px; padding: 6px 8px; width: 100%; }
+      .playground .sizes { display: grid; gap: 4px; grid-template-columns: repeat(3, 1fr); margin-bottom: 14px; }
+      .playground .sizes button { background: #fff; border: 1px solid #ccc; border-radius: 5px; padding: 7px; }
+      .playground .sizes button.is-active { background: #111; color: #fff; }
+      .playground main { align-items: center; display: flex; justify-content: center; overflow: auto; padding: 32px; }
+      .stage { background: #fff; box-shadow: 0 24px 64px rgba(0,0,0,.18); position: relative; resize: both; overflow: hidden; }
+      .stage > [data-component] { height: 100%; inset: 0; position: absolute; width: 100%; }
+      .error { color: #ad3131; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div class="playground">
+      <aside>
+        <h1>Component playground</h1>
+        <p>컴포넌트를 사이트에 넣기 전에 혼자 띄워보는 곳이에요. 오른쪽 아래 모서리를 끌어 크기를 바꿀 수 있어요.</p>
+        <label><span>컴포넌트</span><select data-pick></select></label>
+        <div class="sizes"><button data-size="1200x720" class="is-active" type="button">Desktop</button><button data-size="834x700" type="button">Tablet</button><button data-size="390x700" type="button">Mobile</button></div>
+        <p data-description></p>
+        <form data-props></form>
+        <p class="error" data-error></p>
+      </aside>
+      <main><div class="stage" data-stage style="width:1200px;height:720px"></div></main>
+    </div>
+    <script type="module">
+      import { loadComponentMetas, mountComponents, resolveProps } from "../archive/components-host.js?v=studio5";
+      const params = new URLSearchParams(location.search);
+      const picker = document.querySelector("[data-pick]");
+      const form = document.querySelector("[data-props]");
+      const stage = document.querySelector("[data-stage]");
+      const errorBox = document.querySelector("[data-error]");
+      const escape = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]);
+      const metas = await loadComponentMetas();
+      picker.innerHTML = metas.map((meta) => `<option value="${meta.id}">${escape(meta.name)} (${meta.id})</option>`).join("");
+      if (params.get("c")) picker.value = params.get("c");
+      let host = null;
+      let props = {};
+
+      const field = (prop, value) => {
+        const name = `data-prop="${prop.key}"`;
+        if (prop.type === "toggle") return `<label><input ${name} type="checkbox" ${value ? "checked" : ""}> ${escape(prop.label)}</label>`;
+        if (prop.type === "select") return `<label><span>${escape(prop.label)}</span><select ${name}>${prop.options.map(([key, label]) => `<option value="${escape(key)}" ${key === value ? "selected" : ""}>${escape(label)}</option>`).join("")}</select></label>`;
+        if (prop.type === "textarea" || prop.type === "images") return `<label><span>${escape(prop.label)}</span><textarea ${name} rows="4">${escape(Array.isArray(value) ? value.join("\n") : value)}</textarea></label>`;
+        const type = prop.type === "range" ? "range" : prop.type === "number" ? "number" : prop.type === "color" ? "color" : "text";
+        return `<label><span>${escape(prop.label)} <output>${prop.type === "range" ? escape(value) : ""}</output></span><input ${name} type="${type}" value="${escape(value)}" ${prop.min != null ? `min="${prop.min}"` : ""} ${prop.max != null ? `max="${prop.max}"` : ""} ${prop.step != null ? `step="${prop.step}"` : ""}></label>`;
+      };
+
+      const mount = () => {
+        host?.destroy();
+        errorBox.textContent = "";
+        const meta = metas.find((item) => item.id === picker.value);
+        stage.innerHTML = `<div class="canvas-component" data-component="${meta.id}" data-component-props="${escape(JSON.stringify(props))}"></div>`;
+        host = mountComponents([stage], { editing: false });
+        setTimeout(() => { const error = stage.querySelector("[data-component-error]")?.dataset.componentError; if (error) errorBox.textContent = error; }, 600);
+      };
+
+      const choose = () => {
+        const meta = metas.find((item) => item.id === picker.value);
+        props = resolveProps(meta, {});
+        document.querySelector("[data-description]").textContent = meta.error ? `불러오기 실패: ${meta.error}` : meta.description;
+        form.innerHTML = meta.props.map((prop) => field(prop, props[prop.key])).join("");
+        mount();
+      };
+
+      form.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-prop]");
+        if (!input) return;
+        const meta = metas.find((item) => item.id === picker.value);
+        const prop = meta.props.find((item) => item.key === input.dataset.prop);
+        props[prop.key] = input.type === "checkbox" ? input.checked : ["range", "number"].includes(prop.type) ? Number(input.value) : prop.type === "images" ? input.value.split("\n").filter(Boolean) : input.value;
+        const output = input.closest("label")?.querySelector("output");
+        if (output) output.textContent = input.value;
+        clearTimeout(form._timer);
+        form._timer = setTimeout(mount, prop.type === "range" ? 120 : 300);
+      });
+      picker.addEventListener("change", choose);
+      document.querySelectorAll("[data-size]").forEach((button) => button.addEventListener("click", () => {
+        document.querySelectorAll("[data-size]").forEach((item) => item.classList.toggle("is-active", item === button));
+        const [width, height] = button.dataset.size.split("x");
+        stage.style.width = `${width}px`;
+        stage.style.height = `${height}px`;
+      }));
+      choose();
+    </script>
+  </body>
+</html>
