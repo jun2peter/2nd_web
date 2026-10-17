@@ -17,7 +17,7 @@ import {
   resolveBlock,
   responsiveCSS,
   setOverride,
-} from "./archive/responsive.js?v=studio7";
+} from "./archive/responsive.js?v=studio8";
 import {
   bindCodeBlocks,
   codeBlockDocument,
@@ -29,8 +29,12 @@ import {
   reattachLiveComponents,
   resolveProps,
   sanitizeProps,
-} from "./archive/components-host.js?v=studio7";
-import { bindCustomCursor, bindMagnetic, bindPins, bindSmoothScroll, bindSplitText } from "./archive/effects.js?v=studio7";
+} from "./archive/components-host.js?v=studio8";
+import { bindCustomCursor, bindMagnetic, bindPins, bindSmoothScroll, bindSplitText } from "./archive/effects.js?v=studio8";
+import { toast, openModal, closeModal, openCommandPalette, closePalette, shortcutSheetMarkup, emptyStateMarkup } from "./archive/studio-ui.js?v=studio8";
+import { SECTION_TEMPLATES, PAGE_TEMPLATES, sectionTemplate, sectionSketch } from "./archive/templates.js?v=studio8";
+import { listCheckpoints, saveCheckpoint, loadCheckpoint, deleteCheckpoint, formatBytes, formatWhen } from "./archive/checkpoints.js?v=studio8";
+import { parseRepoFromEditURL, getToken, setToken, getRepoConfig, setRepoConfig, checkConnection, publishArchive, uploadMedia, fetchFileMeta, putFile, encodeText } from "./archive/github-publish.js?v=studio8";
 
 const DATA_VERSION = 5;
 const STORAGE_KEY = "psj-archive-builder-draft-v5";
@@ -38,7 +42,38 @@ const LEGACY_STORAGE_KEYS = ["psj-archive-builder-draft-v4", "psj-archive-builde
 const GITHUB_EDIT_URL = "https://github.com/jun2peter/2nd_web/edit/main/content/archive.json";
 const GITHUB_MEDIA_UPLOAD_URL = "https://github.com/jun2peter/2nd_web/upload/main/media";
 
-const BLOCK_TYPES = ["text", "image", "video", "audio", "button", "shape", "line", "marquee", "gallery", "embed", "nav", "component", "code"];
+const BLOCK_TYPES = ["text", "image", "video", "audio", "button", "shape", "line", "marquee", "gallery", "embed", "nav", "component", "code", "form"];
+// Studio 8: 마스크 프리셋(A13) · 듀오톤(A15) · 폼 칸(C4)
+const MASK_PRESETS = ["none", "fade-bottom", "fade-top", "fade-left", "fade-right", "fade-x", "fade-y", "vignette", "image"];
+const MASK_PRESET_LABELS = { none: "없음", "fade-bottom": "아래로 흐려짐", "fade-top": "위로 흐려짐", "fade-left": "왼쪽으로 흐려짐", "fade-right": "오른쪽으로 흐려짐", "fade-x": "양옆 흐려짐", "fade-y": "위아래 흐려짐", vignette: "비네트 (가장자리 어둡게 뚫기)", image: "이미지 마스크 (PNG·SVG)" };
+const MASK_GRADIENTS = {
+  "fade-bottom": "linear-gradient(to bottom, #000 55%, transparent 100%)",
+  "fade-top": "linear-gradient(to top, #000 55%, transparent 100%)",
+  "fade-left": "linear-gradient(to left, #000 55%, transparent 100%)",
+  "fade-right": "linear-gradient(to right, #000 55%, transparent 100%)",
+  "fade-x": "linear-gradient(to right, transparent, #000 18%, #000 82%, transparent)",
+  "fade-y": "linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent)",
+  vignette: "radial-gradient(ellipse at center, #000 52%, transparent 100%)",
+};
+const FORM_FIELDS = ["name", "email", "phone", "subject", "message"];
+const FORM_FIELD_LABELS = { name: "이름", email: "이메일", phone: "전화", subject: "제목", message: "메시지" };
+function hexToRGB(value) {
+  const hex = String(value || "").trim();
+  const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(hex); const long = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex);
+  if (short) return [parseInt(short[1] + short[1], 16), parseInt(short[2] + short[2], 16), parseInt(short[3] + short[3], 16)];
+  if (long) return [parseInt(long[1], 16), parseInt(long[2], 16), parseInt(long[3], 16)];
+  return null;
+}
+function maskImageFor(block = {}) {
+  if (block.maskPreset === "image") { const url = safeURL(block.maskImage, { imageData: true }); return url ? `url('${escapeHTML(url)}')` : ""; }
+  return MASK_GRADIENTS[block.maskPreset] || "";
+}
+function duotoneFilterMarkup(block) {
+  const dark = hexToRGB(block.duotoneDark); const light = hexToRGB(block.duotoneLight);
+  if (!dark || !light) return "";
+  const table = (channel) => `${(dark[channel] / 255).toFixed(3)} ${(light[channel] / 255).toFixed(3)}`;
+  return `<svg class="canvas-duotone" width="0" height="0" aria-hidden="true" focusable="false"><filter id="duo-${escapeHTML(block.id)}" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="table" tableValues="${table(0)}"/><feFuncG type="table" tableValues="${table(1)}"/><feFuncB type="table" tableValues="${table(2)}"/></feComponentTransfer></filter></svg>`;
+}
 const MOTION_LAB_TRIGGERS = ["load", "in-view", "hover", "press", "click", "scroll", "linked"];
 const TRANSITION_PRESETS = ["none", "fade", "slide", "zoom", "wipe", "circle", "blur"];
 const CURSOR_PRESETS = ["default", "dot", "crosshair", "ring", "blend"];
@@ -259,7 +294,17 @@ function normalizeCanvas(canvas = {}) {
     backgroundPosition: cssText(canvas.backgroundPosition, "50% 50%"),
     backgroundOverlay: cssText(canvas.backgroundOverlay, ""),
     backgroundEffect: ["none", "drift", "noise", "drift-noise"].includes(canvas.backgroundEffect) ? canvas.backgroundEffect : "none",
+    // Studio 8 (B18): 컬럼 그리드 오버레이 (0 = 없음)
+    columns: number(canvas.columns, 0, 0, 24),
+    columnGap: number(canvas.columnGap, 24, 0, 200),
+    columnMargin: number(canvas.columnMargin, 80, 0, 1000),
   };
+}
+
+// Studio 8 (B18): 페이지 가이드선 — 눈금자에서 끌어낸 세로(v: x값)·가로(h: y값) 선, 캔버스 px.
+function normalizeGuides(guides = {}) {
+  const list = (value) => [...new Set((Array.isArray(value) ? value : []).map((item) => Math.round(number(item, NaN))).filter((item) => Number.isFinite(item)))].sort((a, b) => a - b).slice(0, 60);
+  return { v: list(guides?.v), h: list(guides?.h) };
 }
 
 // Studio 7 (C2): 캔버스 맨 아래에 깔리는 배경 층. 편집기에서는 영상 대신 포스터(배경 이미지)만 보여 가볍게 둔다.
@@ -597,7 +642,7 @@ function normalizeBlock(block = {}, index = 0) {
     htmlTag: ["div", "p", "h1", "h2", "h3", "h4", "h5", "h6"].includes(block.htmlTag) ? block.htmlTag : type === "text" ? "p" : "div",
     action: normalizeAction(block.action, block),
     fontFamily: cssText(block.fontFamily, "Arial, sans-serif"),
-    fontSize: number(block.fontSize, type === "button" || type === "nav" ? 16 : 48, 6, 400),
+    fontSize: number(block.fontSize, type === "button" || type === "nav" || type === "form" ? 16 : 48, 6, 400),
     fontWeight: number(block.fontWeight, 400, 100, 1000),
     lineHeight: number(block.lineHeight, 1.05, 0.5, 4),
     letterSpacing: number(block.letterSpacing, 0, -20, 100),
@@ -651,6 +696,19 @@ function normalizeBlock(block = {}, index = 0) {
     focalY: number(block.focalY, 50, 0, 100),
     hoverEffect: HOVER_EFFECTS.includes(block.hoverEffect) ? block.hoverEffect : "none",
     hoverSrc: String(block.hoverSrc ?? ""),
+    maskPreset: MASK_PRESETS.includes(block.maskPreset) ? block.maskPreset : "none",
+    maskImage: String(block.maskImage ?? ""),
+    maskMode: block.maskMode === "luminance" ? "luminance" : "alpha",
+    maskSize: ["cover", "contain", "stretch"].includes(block.maskSize) ? block.maskSize : "cover",
+    maskPosition: cssText(block.maskPosition, "50% 50%"),
+    duotone: Boolean(block.duotone),
+    duotoneDark: cssColor(block.duotoneDark, "#1a1446"),
+    duotoneLight: cssColor(block.duotoneLight, "#ff8a5b"),
+    formEndpoint: String(block.formEndpoint ?? ""),
+    formFields: Array.isArray(block.formFields) ? FORM_FIELDS.filter((name) => block.formFields.includes(name)) : ["name", "email", "message"],
+    formExtra: String(block.formExtra ?? "").slice(0, 2000),
+    formSubmitLabel: String(block.formSubmitLabel || "보내기"),
+    formSuccess: String(block.formSuccess || "보냈어요. 곧 답장할게요."),
     // Studio 7 (A12): 영상 구간(초)·재생 속도. 0은 "끝까지".
     videoStart: number(block.videoStart, 0, 0, 36000),
     videoEnd: number(block.videoEnd, 0, 0, 36000),
@@ -707,6 +765,7 @@ function normalizePage(page = {}, index = 0) {
     },
     // Studio 7 (C1): 이 페이지에만 적용되는 CSS
     customCSS: String(page.customCSS ?? "").slice(0, 50000),
+    guides: normalizeGuides(page.guides),
     blocks,
   };
 }
@@ -783,6 +842,14 @@ export function normalizeArchiveData(source = {}) {
       // Studio 7 (C1): 사이트 전체 CSS와 <head>에 넣을 코드(폰트 link·분석 스크립트). head 코드는 공개 화면에서만 실행.
       customCSS: String(rawSettings.customCSS ?? "").slice(0, 50000),
       customHead: String(rawSettings.customHead ?? "").slice(0, 20000),
+      // Studio 8 (C6): 공개 주소 — sitemap.xml·공유 미리보기용. (C5): 방문자 다크 모드 토글
+      siteURL: safeURL(rawSettings.siteURL, { link: true }),
+      theme: {
+        toggle: Boolean(rawSettings.theme?.toggle),
+        darkBackground: cssColor(rawSettings.theme?.darkBackground, "#0b0b0c"),
+        darkText: cssColor(rawSettings.theme?.darkText, "#f4f3ed"),
+        dimMedia: Boolean(rawSettings.theme?.dimMedia),
+      },
       seo: {
         titleSuffix: String(seo.titleSuffix || ""),
         description: String(seo.description || ""),
@@ -966,11 +1033,29 @@ function surfaceStyle(block) {
 
 function visualEffectStyle(block) {
   const clip = clipPathFor(block);
+  const mask = maskImageFor(block);
+  const maskSize = block.maskSize === "stretch" ? "100% 100%" : block.maskSize || "cover";
+  const maskPosition = cssText(block.maskPosition, "50% 50%");
   return [
-    `filter:blur(${block.blur}px) grayscale(${block.grayscale}) contrast(${number(block.contrast, 1)}) saturate(${number(block.saturate, 1)}) brightness(${number(block.brightness, 1)}) hue-rotate(${number(block.hueRotate)}deg) sepia(${number(block.sepia)}) invert(${number(block.invert)}) drop-shadow(${block.shadowX}px ${block.shadowY}px ${block.shadowBlur}px ${block.shadowColor})`,
+    `filter:${block.duotone && hexToRGB(block.duotoneDark) && hexToRGB(block.duotoneLight) ? `url(#duo-${block.id}) ` : ""}blur(${block.blur}px) grayscale(${block.grayscale}) contrast(${number(block.contrast, 1)}) saturate(${number(block.saturate, 1)}) brightness(${number(block.brightness, 1)}) hue-rotate(${number(block.hueRotate)}deg) sepia(${number(block.sepia)}) invert(${number(block.invert)}) drop-shadow(${block.shadowX}px ${block.shadowY}px ${block.shadowBlur}px ${block.shadowColor})`,
     clip ? `clip-path:${clip}` : "",
+    mask ? `-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:${maskSize};mask-size:${maskSize};-webkit-mask-position:${maskPosition};mask-position:${maskPosition};-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;mask-mode:${block.maskMode === "luminance" ? "luminance" : "alpha"}` : "",
     `--focal:${number(block.focalX, 50)}% ${number(block.focalY, 50)}%`,
   ].filter(Boolean).join(";");
+}
+
+// Studio 8 (C4): 폼 — 방문자가 메시지를 보내는 칸. 편집기에서는 조작이 꺼지고(inert), 공개 화면에서 fetch로 보낸다.
+function formMarkup(block, { editing = false } = {}) {
+  const fields = block.formFields.length ? block.formFields : ["email", "message"];
+  const input = (name) => name === "message" ? `<label><span>${FORM_FIELD_LABELS[name]}</span><textarea name="message" rows="4" required></textarea></label>` : `<label><span>${FORM_FIELD_LABELS[name]}</span><input name="${name}" type="${name === "email" ? "email" : name === "phone" ? "tel" : "text"}" ${["name", "email"].includes(name) ? "required" : ""}></label>`;
+  const extras = block.formExtra.split("\n").map((line) => line.trim()).filter(Boolean).map((line, index) => {
+    const [label, type = "text"] = line.split("|").map((part) => part.trim());
+    const safeType = ["text", "email", "tel", "url", "number", "date", "textarea"].includes(type) ? type : "text";
+    const name = `extra_${index + 1}`;
+    return safeType === "textarea" ? `<label><span>${escapeHTML(label)}</span><textarea name="${name}" rows="3"></textarea></label>` : `<label><span>${escapeHTML(label)}</span><input name="${name}" type="${safeType}"></label>`;
+  });
+  const endpoint = safeURL(block.formEndpoint, { link: true });
+  return `<form class="canvas-form" data-archive-form data-success="${escapeHTML(block.formSuccess)}" action="${escapeHTML(endpoint)}" method="post" novalidate ${editing ? "inert" : ""} style="${typographyStyle(block)};${surfaceStyle(block)}">${fields.map(input).join("")}${extras.join("")}<input type="text" name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" class="canvas-form__honey">${endpoint ? "" : '<p class="canvas-form__warn">받을 주소(엔드포인트)가 아직 없어요 — 오른쪽 내용 패널에서 넣으세요</p>'}<button type="submit">${escapeHTML(block.formSubmitLabel)}</button><p class="canvas-form__status" aria-live="polite" hidden></p></form>`;
 }
 
 function routeForPage(data, pageId, anchorId = "", draft = false) {
@@ -1165,6 +1250,7 @@ function blockContent(block, data, draft = false, currentPageId = "", editing = 
     if (!block.component || !isRegisteredComponent(block.component)) return '<div class="canvas-block__placeholder">COMPONENT · 오른쪽에서 종류를 고르세요</div>';
     return `<div class="canvas-component" data-component="${escapeHTML(block.component)}" data-component-props="${escapeHTML(JSON.stringify(block.props))}"></div>`;
   }
+  if (block.type === "form") return formMarkup(block, { editing });
   if (block.type === "code") {
     if (!block.code.html.trim() && !block.code.css.trim() && !block.code.js.trim()) return '<div class="canvas-block__placeholder">CODE · HTML · CSS · JS</div>';
     return `<iframe class="canvas-code" data-code-frame title="${escapeHTML(block.ariaLabel || block.name)}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" srcdoc="${escapeHTML(codeBlockDocument(block.code, { editing }))}"${block.codeInteractive ? "" : ' tabindex="-1" style="pointer-events:none"'}></iframe>`;
@@ -1183,7 +1269,7 @@ export function archiveBlockMarkup(rawBlock, { data, editing = false, draft = fa
   if (!block.visible && !editing) return "";
   const action = actionAttributes(block.action, documentData, { draft });
   const mediaLinkMode = (["video", "audio"].includes(block.type) && block.playbackMode === "link") || (block.type === "embed" && block.embedMode === "link");
-  const canWrapAction = !["nav", "code"].includes(block.type) && (!["video", "audio", "embed"].includes(block.type) || mediaLinkMode);
+  const canWrapAction = !["nav", "code", "form"].includes(block.type) && (!["video", "audio", "embed"].includes(block.type) || mediaLinkMode);
   let content = blockContent(block, documentData, draft, pageId, editing, Boolean(action && canWrapAction));
   if (action && canWrapAction) content = `<a class="canvas-block__link" ${action} aria-label="${escapeHTML(block.ariaLabel || block.content || block.name)}">${content}</a>`;
   const motion = block.motion;
@@ -1194,13 +1280,13 @@ export function archiveBlockMarkup(rawBlock, { data, editing = false, draft = fa
   // In the editor a fixed block is drawn where it sits on the first screen, whatever its anchor.
   const style = blockStyle(editing && block.fixed ? { ...block, fixedAnchor: "top" } : block, box || layoutBox(documentData.pages.find((page) => page.id === pageId) || documentData.pages[0], "desktop"));
   const wrapperSurface = ["image", "video", "audio", "gallery", "embed"].includes(block.type) ? surfaceStyle(block) : "";
-  const visitorDraggable = block.publicDraggable && !["video", "audio", "embed", "code"].includes(block.type) && !action && !block.lightbox && !block.fixed;
+  const visitorDraggable = block.publicDraggable && !["video", "audio", "embed", "code", "form"].includes(block.type) && !action && !block.lightbox && !block.fixed;
   const motionLabData = motionLab.enabled ? `data-motion-lab="${escapeHTML(JSON.stringify(motionLab))}" data-motion-lab-trigger="${motionLab.trigger}"` : "";
   const motionFocusable = motionLab.enabled && ["click", "press", "hover"].includes(motionLab.trigger) && !action && !["video", "audio", "embed", "nav", "code"].includes(block.type) ? `tabindex="0" ${["click", "press"].includes(motionLab.trigger) ? 'role="button"' : ""}` : "";
   const flags = `${block.fixed ? ` data-fixed="${block.fixedAnchor}"` : ""}${block.pinEnabled && !block.fixed ? " data-pin" : ""}${isGlobal ? " data-global" : ""}${block.hoverEffect && block.hoverEffect !== "none" ? ` data-hover-effect="${block.hoverEffect}"` : ""}`;
   const startsClosed = motionLab.enabled && motionLab.trigger === "linked" && motionLab.linkMode === "toggle" && motionLab.keyframes[0]?.opacity === 0;
   const classes = `canvas-block canvas-block--${block.type}${editing ? " is-editable" : ""}${editing && startsClosed ? " is-toggle-closed" : ""}${block.visible ? "" : " is-hidden-layer"}${layoutHidden ? " is-layout-hidden" : ""}${block.locked ? " is-locked" : ""}`;
-  return `<article id="${escapeHTML(anchor)}" class="${classes}" data-block-id="${escapeHTML(block.id)}" data-entrance="${motion.entrance.preset}" data-trigger="${motion.entrance.trigger}" data-once="${motion.entrance.once}" data-loop="${motion.loop.preset}" data-hover="${motion.hover.preset}" data-parallax="${block.parallax}" data-mouse-parallax="${block.mouseParallax}"${flags} ${motionLabData} ${motionFocusable} ${visitorDraggable ? "data-public-draggable" : ""} ${lightboxAttributes} style="${style}"><div class="canvas-block__entrance"><div class="canvas-block__timeline"><div class="canvas-block__loop"><div class="canvas-block__hover"><div class="canvas-block__content"${wrapperSurface ? " data-surface" : ""} style="${visualEffectStyle(block)};${wrapperSurface}">${content}</div></div></div></div></div>${editing ? EDITOR_HANDLES_MARKUP : ""}</article>`;
+  return `<article id="${escapeHTML(anchor)}" class="${classes}" data-block-id="${escapeHTML(block.id)}" data-entrance="${motion.entrance.preset}" data-trigger="${motion.entrance.trigger}" data-once="${motion.entrance.once}" data-loop="${motion.loop.preset}" data-hover="${motion.hover.preset}" data-parallax="${block.parallax}" data-mouse-parallax="${block.mouseParallax}"${flags} ${motionLabData} ${motionFocusable} ${visitorDraggable ? "data-public-draggable" : ""} ${lightboxAttributes} style="${style}">${block.duotone ? duotoneFilterMarkup(block) : ""}<div class="canvas-block__entrance"><div class="canvas-block__timeline"><div class="canvas-block__loop"><div class="canvas-block__hover"><div class="canvas-block__content"${wrapperSurface ? " data-surface" : ""} style="${visualEffectStyle(block)};${wrapperSurface}">${content}</div></div></div></div></div>${editing ? EDITOR_HANDLES_MARKUP : ""}</article>`;
 }
 
 function resolvePage(data, pageOrId) {
@@ -1253,6 +1339,39 @@ function field(label, path, value, type = "text", options = "") {
 
 const option = (value, current, label = value) => `<option value="${value}" ${value === current ? "selected" : ""}>${label}</option>`;
 
+// Studio 8 (B17): 색 칸 = 색 고르기 + 글자 입력(그라디언트·rgba도 그대로 쓸 수 있게). 팔레트 띠는 사이트에서 쓰는 색 + 최근 색 + 스포이트.
+const RECENT_COLORS_KEY = "psj-studio-recent-colors";
+const isHexColor = (value) => /^#[0-9a-f]{6}$/i.test(String(value || "").trim());
+function colorField(label, path, value) {
+  const hex = isHexColor(value) ? String(value).trim() : "#000000";
+  return `<label class="studio-color studio-color--field"><span>${label}</span><span class="studio-color__row"><input type="color" value="${hex}" data-color-twin aria-label="${label} 고르기"><input data-field="${path}" data-color-field type="text" value="${escapeHTML(value)}"></span></label>`;
+}
+function recentColors() {
+  try { return JSON.parse(localStorage.getItem(RECENT_COLORS_KEY) || "[]").filter(isHexColor).map((item) => item.toLowerCase()).slice(0, 10); } catch (error) { return []; }
+}
+function rememberColor(value) {
+  const hex = String(value || "").trim().toLowerCase();
+  if (!isHexColor(hex)) return;
+  try { localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify([hex, ...recentColors().filter((item) => item !== hex)].slice(0, 10))); } catch (error) { /* storage full */ }
+}
+function sitePalette(data) {
+  const counts = new Map();
+  const add = (value) => { const hex = String(value || "").trim().toLowerCase(); if (isHexColor(hex)) counts.set(hex, (counts.get(hex) || 0) + 1); };
+  const scan = (block) => { add(block.color); add(block.background); add(block.borderColor); };
+  data.pages.forEach((page) => { add(page.canvas.background); page.blocks.forEach(scan); });
+  data.globals.forEach(scan);
+  add(data.settings.cursorColor);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([hex]) => hex);
+}
+function paletteStripMarkup(data) {
+  const site = sitePalette(data);
+  const recent = recentColors().filter((hex) => !site.includes(hex));
+  const swatch = (hex) => `<button data-swatch="${hex}" title="${hex}" aria-label="${hex} 적용" type="button" style="background:${hex}"></button>`;
+  const eyedropper = typeof EyeDropper === "function" ? '<button class="studio-palette-strip__eyedropper" data-eyedropper title="화면에서 색 집기 (스포이트)" aria-label="스포이트" type="button">⌖</button>' : "";
+  if (!site.length && !recent.length && !eyedropper) return "";
+  return `<div class="studio-palette-strip" data-palette-strip><span class="studio-palette-strip__label">색</span>${site.map(swatch).join("")}${recent.length ? `<i></i>${recent.map(swatch).join("")}` : ""}${eyedropper}<small>색 칸을 누른 뒤 고르면 그 칸에 들어가요</small></div>`;
+}
+
 function pageListMarkup(data, activePageId) {
   const groups = [
     { key: "listed", title: "메뉴에 표시", empty: "아직 메뉴 페이지가 없어요." },
@@ -1291,13 +1410,18 @@ function siteSettingsMarkup(data) {
   const settings = data.settings;
   return `${field("첫 화면", "settings.homeView", settings.homeView, "select", option("experience", settings.homeView, "Experience (검은 화면)") + option("archive", settings.homeView, "Archive (이 빌더로 만든 페이지)"))}
     ${field("페이지 전환", "settings.transition.preset", settings.transition.preset, "select", option("none", settings.transition.preset, "없음") + option("fade", settings.transition.preset, "페이드") + option("slide", settings.transition.preset, "밀어 올리기") + option("zoom", settings.transition.preset, "줌") + option("wipe", settings.transition.preset, "와이프 (아래에서 위로)") + option("circle", settings.transition.preset, "원형 (누른 곳에서 퍼짐)") + option("blur", settings.transition.preset, "블러"))}
-    <div class="studio-fields studio-fields--two">${field("전환 시간(ms)", "settings.transition.duration", settings.transition.duration, "number")}${field("화면 맞춤", "settings.scaleMode", settings.scaleMode, "select", option("fit", settings.scaleMode, "화면 폭에 꽉 채움") + option("max-100", settings.scaleMode, "원래 크기까지만"))}${field("커서", "settings.cursor", settings.cursor, "select", option("default", settings.cursor, "기본") + option("dot", settings.cursor, "점") + option("crosshair", settings.cursor, "십자") + option("ring", settings.cursor, "링 (따라오기)") + option("blend", settings.cursor, "반전 원"))}${field("커서 색", "settings.cursorColor", settings.cursorColor)}</div>
+    <div class="studio-fields studio-fields--two">${field("전환 시간(ms)", "settings.transition.duration", settings.transition.duration, "number")}${field("화면 맞춤", "settings.scaleMode", settings.scaleMode, "select", option("fit", settings.scaleMode, "화면 폭에 꽉 채움") + option("max-100", settings.scaleMode, "원래 크기까지만"))}${field("커서", "settings.cursor", settings.cursor, "select", option("default", settings.cursor, "기본") + option("dot", settings.cursor, "점") + option("crosshair", settings.cursor, "십자") + option("ring", settings.cursor, "링 (따라오기)") + option("blend", settings.cursor, "반전 원"))}${colorField("커서 색", "settings.cursorColor", settings.cursorColor)}</div>
     <div class="studio-checks">${field("부드러운 스크롤", "settings.smoothScroll.enabled", settings.smoothScroll.enabled, "checkbox")}${field("상단 전환 막대 숨김", "settings.hideViewSwitch", settings.hideViewSwitch, "checkbox")}</div>
     ${settings.smoothScroll.enabled ? field("스크롤 부드러움 (0.02 느림 ~ 0.5 빠름)", "settings.smoothScroll.intensity", settings.smoothScroll.intensity, "number") : ""}
     <div class="studio-checks">${field("고정 전역 페이지 메뉴", "settings.showPageNav", settings.showPageNav, "checkbox")}${field("스크롤 진행선", "settings.showScrollProgress", settings.showScrollProgress, "checkbox")}${field("모션 정지 버튼", "settings.showMotionToggle", settings.showMotionToggle, "checkbox")}</div>
     <p class="studio-insert__label">반응형 기준 (화면 폭)</p>
     <div class="studio-fields studio-fields--two">${field("태블릿 배치: 이 폭 이하", "settings.responsive.tabletMax", settings.responsive.tabletMax, "number")}${field("모바일 배치: 이 폭 이하", "settings.responsive.mobileMax", settings.responsive.mobileMax, "number")}</div>
     <p class="studio-help">페이지마다 Tablet·Mobile 배치를 만들면 이 폭을 기준으로 바뀌어요. 없는 배치는 한 단계 큰 배치를 줄여서 보여줘요.</p>
+    <p class="studio-insert__label">공개 주소 · 다크 모드 (Studio 8)</p>
+    ${field("공개 주소 (예: https://jun2peter.github.io/2nd_web/)", "settings.siteURL", settings.siteURL, "url")}
+    <p class="studio-help">sitemap.xml(게시 창에서 내려받기)과 검수에 쓰여요.</p>
+    <div class="studio-checks">${field("방문자 다크 모드 버튼 (☾)", "settings.theme.toggle", settings.theme.toggle, "checkbox")}${field("다크일 때 사진 살짝 어둡게", "settings.theme.dimMedia", settings.theme.dimMedia, "checkbox")}</div>
+    ${settings.theme.toggle ? `<div class="studio-fields studio-fields--two">${colorField("다크 배경", "settings.theme.darkBackground", settings.theme.darkBackground)}${colorField("다크 글자색", "settings.theme.darkText", settings.theme.darkText)}</div><p class="studio-help">페이지 배경과 글자색만 바뀌어요(사진·버튼·도형은 그대로). 방문자의 선택은 브라우저에 기억돼요.</p>` : ""}
     <p class="studio-insert__label">코드 (Studio 7)</p>
     ${codeArea("사이트 전체 CSS", "settings.customCSS", settings.customCSS)}
     <p class="studio-help">모든 페이지에 적용돼요. 편집기 캔버스에도 바로 보여요.</p>
@@ -1327,7 +1451,11 @@ function pageInspectorMarkup(data, page, layout = "desktop") {
       ${field("공개 상태", "page.visibility", page.visibility, "select", option("listed", page.visibility, "게시됨 · 메뉴에 표시") + option("unlisted", page.visibility, "게시됨 · 링크로만 접근") + option("draft", page.visibility, "초안 · 일반 사이트에서 숨김"))}
       <div class="studio-page-actions"><button data-action="set-home" type="button" ${isHome ? "disabled" : ""}>${isHome ? "현재 홈페이지" : "홈으로 지정"}</button><button data-action="duplicate-page" type="button">복제</button><button data-action="delete-page" type="button">삭제</button></div>
     </div></details>
-    <details class="studio-inspector-section" open><summary><span>페이지 크기${layout === "desktop" ? "" : ` · ${LAYOUT_LABELS[layout]}`}</span><small data-page-size-summary>${box.width} × ${box.height}px</small></summary><div class="studio-inspector-section__body"><div class="studio-fields studio-fields--two">${sizeFields}${field("배경", "canvas.background", page.canvas.background)}${field("스냅 간격", "canvas.grid", page.canvas.grid, "number")}</div>${field("웹폰트 CSS 주소", "canvas.fontStylesheet", page.canvas.fontStylesheet, "url")}</div></details>
+    <details class="studio-inspector-section" open><summary><span>페이지 크기${layout === "desktop" ? "" : ` · ${LAYOUT_LABELS[layout]}`}</span><small data-page-size-summary>${box.width} × ${box.height}px</small></summary><div class="studio-inspector-section__body"><div class="studio-fields studio-fields--two">${sizeFields}${colorField("배경", "canvas.background", page.canvas.background)}${field("스냅 간격", "canvas.grid", page.canvas.grid, "number")}</div>${field("웹폰트 CSS 주소", "canvas.fontStylesheet", page.canvas.fontStylesheet, "url")}
+      <p class="studio-insert__label">컬럼 그리드 · 가이드 (Studio 8)</p>
+      <div class="studio-fields studio-fields--two">${field("컬럼 수 (0 = 없음)", "canvas.columns", page.canvas.columns, "number")}${field("컬럼 간격", "canvas.columnGap", page.canvas.columnGap, "number")}${field("좌우 여백", "canvas.columnMargin", page.canvas.columnMargin, "number")}</div>
+      <div class="studio-button-row"><button data-action="toggle-rulers" type="button">눈금자 켜기/끄기 (Ctrl+R)</button><button data-action="clear-guides" type="button" ${page.guides.v.length + page.guides.h.length ? "" : "disabled"}>가이드 ${page.guides.v.length + page.guides.h.length}개 지우기</button></div>
+      <p class="studio-help">눈금자를 켜고 위·왼쪽 눈금자에서 캔버스로 끌어내리면 가이드가 생겨요. 가이드는 끌어서 옮기고 더블클릭으로 지워요. 요소는 가이드와 컬럼 가장자리에 자석처럼 붙어요. 컬럼은 Ctrl+'로 숨겼다 보여요.</p></div></details>
     <details class="studio-inspector-section" ${page.canvas.backgroundImage || page.canvas.backgroundVideo || page.canvas.backgroundEffect !== "none" ? "open" : ""}><summary><span>배경 미디어</span><small>이미지 · 영상 · 그라디언트 · 노이즈</small></summary><div class="studio-inspector-section__body">
       ${field("배경 이미지 (링크 또는 /media/파일)", "canvas.backgroundImage", page.canvas.backgroundImage)}${field("배경 영상 (MP4·WebM · 무음 반복)", "canvas.backgroundVideo", page.canvas.backgroundVideo)}
       <div class="studio-fields studio-fields--two">${field("맞춤", "canvas.backgroundFit", page.canvas.backgroundFit, "select", option("cover", page.canvas.backgroundFit, "꽉 채움") + option("contain", page.canvas.backgroundFit, "전체 보이기"))}${field("위치 (예: 50% 30%)", "canvas.backgroundPosition", page.canvas.backgroundPosition)}</div>
@@ -1366,19 +1494,20 @@ export function archiveStudioTemplate(source, activePageId = "") {
   return `<main id="main" class="archive-page archive-page--studio">
     <div class="archive-studio" data-archive-studio data-active-page="${escapeHTML(page.id)}">
       <aside class="archive-studio__left">
-        <div class="archive-studio__brand"><strong>ARCHIVE STUDIO <b>7</b></strong><span>Select · Align · Fonts</span></div>
+        <div class="archive-studio__brand"><strong>ARCHIVE STUDIO <b>8</b></strong><span>Media · Tools · Publish</span></div>
         <a class="studio-exit" href="?view=archive">← 사이트로 돌아가기</a>
         <section class="studio-panel studio-pages"><div class="studio-panel__head"><div><h2>페이지</h2><small data-page-count>${data.pages.length}개</small></div></div><div data-page-list>${pageListMarkup(data, page.id)}</div><div class="studio-page-create"><button data-action="add-page" type="button">＋ 메뉴 페이지</button><button data-action="add-unlisted-page" type="button">＋ 링크 전용</button></div></section>
         <section class="studio-panel studio-layers"><div class="studio-panel__head"><h2>레이어</h2><small>드래그로 순서 · 더블클릭 이름</small></div><input class="studio-layer-search" data-layer-search type="search" placeholder="레이어 검색" aria-label="레이어 검색"><div data-layer-list></div></section>
         <section class="studio-panel studio-insert"><h2>요소 추가</h2><p class="studio-insert__label">기본</p><div class="studio-add-grid">
-          <button data-add="text" type="button">T&nbsp; 텍스트</button><button data-add="button" type="button">↗ 버튼</button><button data-add="shape" type="button">○ 도형</button><button data-add="line" type="button">— 선</button></div><p class="studio-insert__label">미디어</p><div class="studio-add-grid"><button data-add="image" type="button">▧ 이미지·GIF</button><button data-add="video" type="button">▶ 영상</button><button data-add="audio" type="button">♪ 오디오</button><button data-add="gallery" type="button">▦ 갤러리</button><button data-add="embed" type="button">⌘ 임베드</button></div><p class="studio-insert__label">인터랙션</p><div class="studio-add-grid"><button data-add="marquee" type="button">→ 반복 글자</button><button data-add="nav" type="button">☰ 페이지 메뉴</button>
-        </div><p class="studio-insert__label">커스텀 · 무엇이든</p><div class="studio-add-grid"><button data-add="code" type="button">&lt;/&gt; 코드 블록</button><button data-add-component="" type="button" data-scroll-library>✦ 컴포넌트</button></div><div class="studio-component-library" data-component-library><p class="studio-muted">컴포넌트 목록을 불러오는 중…</p></div></section>
+          <button data-add="text" type="button"><i>T</i><span>텍스트</span></button><button data-add="button" type="button"><i>↗</i><span>버튼</span></button><button data-add="shape" type="button"><i>○</i><span>도형</span></button><button data-add="line" type="button"><i>—</i><span>선</span></button></div><p class="studio-insert__label">미디어</p><div class="studio-add-grid"><button data-add="image" type="button"><i>▧</i><span>이미지·GIF</span></button><button data-add="video" type="button"><i>▶</i><span>영상</span></button><button data-add="audio" type="button"><i>♪</i><span>오디오</span></button><button data-add="gallery" type="button"><i>▦</i><span>갤러리</span></button><button data-add="embed" type="button"><i>⌘</i><span>임베드</span></button></div><p class="studio-insert__label">인터랙션</p><div class="studio-add-grid"><button data-add="marquee" type="button"><i>→</i><span>반복 글자</span></button><button data-add="nav" type="button"><i>☰</i><span>페이지 메뉴</span></button><button data-add="form" type="button"><i>✉</i><span>폼</span></button>
+        </div><p class="studio-insert__label">커스텀 · 무엇이든</p><div class="studio-add-grid"><button data-add="code" type="button"><i>&lt;/&gt;</i><span>코드 블록</span></button><button data-add-component="" type="button" data-scroll-library><i>✦</i><span>컴포넌트</span></button><button data-action="open-templates" type="button"><i>▤</i><span>섹션 템플릿</span></button></div><div class="studio-component-library" data-component-library><p class="studio-muted">컴포넌트 목록을 불러오는 중…</p></div></section>
+        <details class="studio-panel studio-assets"><summary>자산 <small data-asset-count></small></summary><div class="studio-assets__body" data-asset-list><p class="studio-muted">아직 사용한 이미지·영상이 없어요.</p></div></details>
         <details class="studio-panel studio-site-settings"><summary>사이트 설정</summary><div class="studio-site-settings__body">
           ${siteSettingsMarkup(data)}
         </div></details>
       </aside>
       <section class="archive-studio__center">
-        <header class="archive-studio__topbar"><div class="studio-mode-switch" role="group" aria-label="편집 모드"><button class="is-active" data-studio-mode="design" aria-pressed="true" type="button">Design</button><button data-studio-mode="motion" aria-pressed="false" type="button">Motion</button></div><div class="studio-breakpoints" role="group" aria-label="화면 크기" data-breakpoints>${breakpointSwitchMarkup(page, "desktop")}</div><div class="studio-topbar__context"><strong data-current-page-name>${escapeHTML(page.name)}</strong><span data-current-page-meta>${page.visibility === "listed" ? "메뉴 표시" : page.visibility === "unlisted" ? "링크 전용" : "초안"} · ${page.canvas.width}×${page.canvas.height}</span><small data-save-status aria-live="polite">이 브라우저에 자동 저장됨</small></div><div class="studio-topbar__actions"><button data-action="undo" type="button" title="실행 취소" aria-label="실행 취소">↶</button><button data-action="redo" type="button" title="다시 실행" aria-label="다시 실행">↷</button><select data-zoom aria-label="캔버스 확대"><option value="0.25">25%</option><option value="0.5" selected>50%</option><option value="0.75">75%</option><option value="1">100%</option></select><button data-action="preflight" type="button">검수</button><button data-action="device-preview" type="button">기기 미리보기</button><button data-action="preview" type="button">새 탭</button><button data-action="import" type="button">불러오기</button><button data-action="reset-published" type="button">게시본</button><button data-action="download" type="button">백업</button><button class="studio-publish" data-action="publish" type="button">게시 파일 준비</button></div></header>
+        <header class="archive-studio__topbar"><div class="studio-mode-switch" role="group" aria-label="편집 모드"><button class="is-active" data-studio-mode="design" aria-pressed="true" type="button">Design</button><button data-studio-mode="motion" aria-pressed="false" type="button">Motion</button></div><div class="studio-breakpoints" role="group" aria-label="화면 크기" data-breakpoints>${breakpointSwitchMarkup(page, "desktop")}</div><div class="studio-topbar__context"><strong data-current-page-name>${escapeHTML(page.name)}</strong><span data-current-page-meta>${page.visibility === "listed" ? "메뉴 표시" : page.visibility === "unlisted" ? "링크 전용" : "초안"} · ${page.canvas.width}×${page.canvas.height}</span><small data-save-status aria-live="polite">이 브라우저에 자동 저장됨</small></div><div class="studio-topbar__actions"><button data-action="undo" type="button" title="실행 취소 (Ctrl+Z)" aria-label="실행 취소">↶</button><button data-action="redo" type="button" title="다시 실행 (Ctrl+Shift+Z)" aria-label="다시 실행">↷</button><span class="studio-zoom" role="group" aria-label="캔버스 확대"><button data-action="zoom-out" type="button" title="축소 (Ctrl+-)" aria-label="축소">−</button><select data-zoom aria-label="캔버스 확대"><option value="0.25">25%</option><option value="0.5" selected>50%</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.5">150%</option></select><button data-action="zoom-in" type="button" title="확대 (Ctrl+=)" aria-label="확대">＋</button><button data-action="zoom-fit" type="button" title="화면 맞춤 (Ctrl+0)">맞춤</button></span><button data-action="toggle-rulers" type="button" title="눈금자·가이드 (Ctrl+R)" aria-pressed="false">눈금자</button><button data-action="toggle-columns" type="button" title="컬럼 그리드 보기 (Ctrl+')" aria-pressed="false">컬럼</button><button data-action="command-palette" type="button" title="명령 팔레트 (Ctrl+K)">⌘K</button><button data-action="shortcuts" type="button" title="단축키 (?)" aria-label="단축키 보기">?</button><button data-action="preflight" type="button">검수</button><button data-action="device-preview" type="button">기기 미리보기</button><button data-action="preview" type="button">새 탭</button><button data-action="file-menu" type="button" aria-haspopup="menu">파일 ▾</button><span hidden><button data-action="import" type="button">불러오기</button><button data-action="reset-published" type="button">게시본</button><button data-action="download" type="button">백업</button><button data-action="publish-copy" type="button">복사 게시</button></span><button class="studio-publish" data-action="publish" type="button">게시</button></div></header>
         <div class="archive-studio__workspace"><div class="studio-layout-prompt" data-layout-prompt hidden></div><div class="archive-studio__board-sizer"><div class="archive-studio__board">${archiveCanvasMarkup(data, page, { editing: true })}</div></div></div>
         ${motionLabDockMarkup({ blocks: [...page.blocks, ...data.globals] })}
       </section>
@@ -1531,7 +1660,8 @@ function inspectorMarkup(block, data, selectedFrameId = "", motionMode = false, 
     ${field("포스터 이미지", "poster", block.poster)}${field("WebVTT 자막 경로", "captions", block.captions)}${field("영상 설명", "alt", block.alt)}${focalPickerMarkup(block)}<div class="studio-fields studio-fields--two">${field("보이는 중심 X(%)", "focalX", block.focalX, "number")}${field("보이는 중심 Y(%)", "focalY", block.focalY, "number")}</div>${field("호버 효과", "hoverEffect", block.hoverEffect, "select", HOVER_EFFECTS.filter((item) => item !== "swap").map((item) => option(item, block.hoverEffect, HOVER_EFFECT_LABELS[item])).join(""))}` : "";
   const audioFields = block.type === "audio" ? `${field("오디오 링크", "src", block.src, "url")}${field("업로드 파일 경로", "media", block.media)}<button class="inspector-file" data-action="upload-audio" type="button">MP3·WAV 업로드 ↗</button>${field("재생 버튼 문구", "playLabel", block.playLabel)}` : "";
   const buttonFields = block.type === "button" ? `<div class="studio-presets"><button data-button-preset="square" type="button">각진</button><button data-button-preset="round" type="button">둥근</button><button data-button-preset="pill" type="button">캡슐</button><button data-button-preset="circle" type="button">원형</button><button data-button-preset="outline" type="button">테두리</button></div>${field("배경 이미지·GIF 링크/경로", "backgroundImage", block.backgroundImage)}<button class="inspector-file" data-action="pick-button-image" type="button">작은 버튼 이미지 바로 넣기</button><button class="inspector-file" data-action="upload-media" type="button">큰 버튼 이미지 업로드 ↗</button>` : "";
-  const textFields = ["text", "button", "marquee", "nav"].includes(block.type) ? `
+  const formFieldsMarkup = block.type === "form" ? `${field("받을 주소 (Formspree·Getform·Web3Forms 엔드포인트)", "formEndpoint", block.formEndpoint, "url")}<p class="studio-help">예: https://formspree.io/f/xxxx — 폼 서비스에서 만들면 주는 주소예요. 메일은 그 서비스가 보내줘요. 주소가 없으면 보내기가 안 돼요.</p><div class="studio-checks">${FORM_FIELDS.map((name) => `<label class="studio-check"><input data-form-field="${name}" type="checkbox" ${block.formFields.includes(name) ? "checked" : ""}><span>${FORM_FIELD_LABELS[name]}</span></label>`).join("")}</div>${field("추가 칸 (한 줄에 하나: 라벨 | 종류)", "formExtra", block.formExtra, "textarea")}<p class="studio-help">종류: text · email · tel · url · number · date · textarea</p><div class="studio-fields studio-fields--two">${field("보내기 버튼 글자", "formSubmitLabel", block.formSubmitLabel)}${field("성공 메시지", "formSuccess", block.formSuccess)}</div>` : "";
+  const textFields = ["text", "button", "marquee", "nav", "form"].includes(block.type) ? `
     ${["text", "button", "marquee"].includes(block.type) ? field(block.type === "button" ? "버튼 글자" : "내용", "content", block.content, "textarea") : ""}
     ${block.type === "text" ? field("HTML 의미", "htmlTag", block.htmlTag, "select", ["p", "h1", "h2", "h3", "h4", "h5", "h6", "div"].map((item) => option(item, block.htmlTag)).join("")) : ""}
     <div class="studio-font-field">${field("폰트", "fontFamily", block.fontFamily)}<button class="studio-font-pick" data-font-pick type="button" title="폰트 고르기" style="font-family:${escapeHTML(block.fontFamily)}">Aa</button></div>
@@ -1562,11 +1692,11 @@ function inspectorMarkup(block, data, selectedFrameId = "", motionMode = false, 
   const componentOptions = [...componentMetas.values()].map((item) => option(item.id, block.component, escapeHTML(item.name))).join("");
   const componentFields = block.type === "component" ? `${field("컴포넌트", "component", block.component, "select", `<option value="">선택</option>${componentOptions}`)}${meta ? `<p class="studio-help">${escapeHTML(meta.description)}${meta.error ? ` · 불러오기 실패: ${escapeHTML(meta.error)}` : ""}</p>${componentPropFields(meta, block.props)}` : `<p class="studio-help">${componentMetas.size ? "위에서 컴포넌트를 고르세요." : "컴포넌트 목록을 불러오는 중…"}</p>`}<p class="studio-help">새 효과는 components 폴더에 파일 하나를 추가해 만들어요 · docs/COMPONENTS.md</p>` : "";
   const codeFields = block.type === "code" ? `<p class="studio-help">CodePen이나 다른 Claude가 만든 HTML·CSS·JS를 붙여넣으면 이 상자 안에서 바로 실행돼요. 사이트와 분리된 안전한 상자라서 코드가 잘못돼도 사이트 전체는 깨지지 않아요.</p>${codeArea("HTML", "code.html", block.code.html)}${codeArea("CSS", "code.css", block.code.css)}${codeArea("JavaScript", "code.js", block.code.js)}<div class="studio-checks">${field("방문자가 상자 안을 조작", "codeInteractive", block.codeInteractive, "checkbox")}</div><p class="studio-help">스크롤·마우스 값은 <code>archive.on("scroll", fn)</code>, <code>archive.on("pointer", fn)</code>로 받을 수 있어요.</p>` : "";
-  const contentBody = `${textFields}${mediaFields}${videoFields}${audioFields}${buttonFields}${marqueeFields}${galleryFields}${embedFields}${componentFields}${codeFields}` || '<p class="studio-muted">이 요소는 내용 설정이 없어요.</p>';
+  const contentBody = `${formFieldsMarkup}${textFields}${mediaFields}${videoFields}${audioFields}${buttonFields}${marqueeFields}${galleryFields}${embedFields}${componentFields}${codeFields}` || '<p class="studio-muted">이 요소는 내용 설정이 없어요.</p>';
   const layoutNote = layout === "desktop" ? "" : `<div class="studio-callout studio-callout--layout"><strong>${LAYOUT_LABELS[layout]} 배치 편집 중</strong><p>여기서 바꾼 위치·크기·글자 크기는 ${LAYOUT_LABELS[layout]}에만 적용돼요. 점(●)이 붙은 칸이 이 화면 전용 값이에요.</p>${overridden ? '<button data-action="layout-reset-block" type="button">데스크톱 값으로 되돌리기</button>' : ""}</div>`;
   const fixedFields = block.fixed ? `${field("고정 기준", "fixedAnchor", block.fixedAnchor, "select", option("top", block.fixedAnchor, "화면 위쪽 기준") + option("bottom", block.fixedAnchor, "화면 아래쪽 기준"))}<p class="studio-help">스크롤해도 화면의 같은 자리에 있어요. 캔버스의 ‘첫 화면’ 점선 안에 놓으세요. 헤더·메뉴 버튼·커서 효과에 써요.</p>` : "";
   const layoutBody = `${layoutNote}${field("레이어 이름", "name", block.name)}<div class="studio-fields studio-fields--two">${lf("X", "x", block.x, "number")}${lf("Y", "y", block.y, "number")}${lf("W", "width", block.width, "number")}${lf("H", "height", block.height, "number")}${lf("회전", "rotation", block.rotation, "number")}${lf("투명도", "opacity", block.opacity, "number")}</div><div class="studio-checks">${field(`${LAYOUT_LABELS[layout]}에서 숨기기`, "layoutHidden", block.hidden, "checkbox")}${field("모든 화면에서 숨김", "visibleInverse", !block.visible, "checkbox")}${field("잠금", "locked", block.locked, "checkbox")}${field("모든 페이지에 표시", "isGlobal", isGlobal, "checkbox")}${field("화면에 고정", "fixed", block.fixed, "checkbox")}</div>${fixedFields}${field("페이지 내 위치 ID", "anchorId", block.anchorId)}<p class="studio-help studio-help--tight">캔버스 기준 정렬 (가로는 전체 너비, 세로는 첫 화면)</p>${alignToolbarMarkup(1)}<div class="inspector-actions"><button data-action="duplicate" type="button">복제</button><button data-action="back" type="button">뒤로</button><button data-action="front" type="button">앞으로</button></div>`;
-  const styleBody = `<div class="studio-fields studio-fields--two">${field("글자색", "color", block.color)}${field("배경/그라디언트", "background", block.background)}${field("선 색", "borderColor", block.borderColor)}${field("선 두께", "borderWidth", block.borderWidth, "number")}${lf("둥근 모서리", "borderRadius", block.borderRadius, "number")}${lf("안쪽 여백", "padding", block.padding, "number")}${field("블러", "blur", block.blur, "number")}${field("흑백", "grayscale", block.grayscale, "number")}${field("대비", "contrast", block.contrast, "number")}${field("채도", "saturate", block.saturate, "number")}${field("밝기", "brightness", block.brightness, "number")}${field("색상 회전(°)", "hueRotate", block.hueRotate, "number")}${field("세피아", "sepia", block.sepia, "number")}${field("반전", "invert", block.invert, "number")}</div><p class="studio-help">대비·채도·밝기는 1이 원본, 흑백·세피아·반전은 0~1.</p>${field("모양으로 자르기", "clipShape", block.clipShape, "select", CLIP_SHAPES.map((item) => option(item, block.clipShape, CLIP_SHAPE_LABELS[item])).join(""))}${block.clipShape === "custom" ? `${field("clip-path 값", "clipCustom", block.clipCustom, "textarea")}<p class="studio-help">예: polygon(50% 0%, 100% 100%, 0% 100%) · circle(40% at 50% 50%) · inset(10% round 40px)</p>` : ""}${block.clipShape !== "none" ? '<p class="studio-help">사진·영상·갤러리·도형 모두 이 모양으로 잘려요. 그림자는 자른 모양 밖으로 나가지 않아요.</p>' : ""}${field("블렌드", "blendMode", block.blendMode, "select", ["normal", "multiply", "screen", "overlay", "difference", "exclusion", "color-burn", "color-dodge"].map((item) => option(item, block.blendMode)).join(""))}<div class="studio-fields studio-fields--two">${field("그림자 X", "shadowX", block.shadowX, "number")}${field("그림자 Y", "shadowY", block.shadowY, "number")}${field("그림자 번짐", "shadowBlur", block.shadowBlur, "number")}${field("그림자 색", "shadowColor", block.shadowColor)}</div>`;
+  const styleBody = `${paletteStripMarkup(data)}<div class="studio-fields studio-fields--two">${colorField("글자색", "color", block.color)}${colorField("배경/그라디언트", "background", block.background)}${colorField("선 색", "borderColor", block.borderColor)}${field("선 두께", "borderWidth", block.borderWidth, "number")}${lf("둥근 모서리", "borderRadius", block.borderRadius, "number")}${lf("안쪽 여백", "padding", block.padding, "number")}${field("블러", "blur", block.blur, "number")}${field("흑백", "grayscale", block.grayscale, "number")}${field("대비", "contrast", block.contrast, "number")}${field("채도", "saturate", block.saturate, "number")}${field("밝기", "brightness", block.brightness, "number")}${field("색상 회전(°)", "hueRotate", block.hueRotate, "number")}${field("세피아", "sepia", block.sepia, "number")}${field("반전", "invert", block.invert, "number")}</div><p class="studio-help">대비·채도·밝기는 1이 원본, 흑백·세피아·반전은 0~1.</p><div class="studio-button-row"><button class="inspector-file" data-action="gradient-edit" type="button">배경 그라디언트 편집…</button></div>${field("모양으로 자르기", "clipShape", block.clipShape, "select", CLIP_SHAPES.map((item) => option(item, block.clipShape, CLIP_SHAPE_LABELS[item])).join(""))}${block.clipShape === "custom" ? `${field("clip-path 값", "clipCustom", block.clipCustom, "textarea")}<p class="studio-help">예: polygon(50% 0%, 100% 100%, 0% 100%) · circle(40% at 50% 50%) · inset(10% round 40px)</p>` : ""}${block.clipShape !== "none" ? '<p class="studio-help">사진·영상·갤러리·도형 모두 이 모양으로 잘려요. 그림자는 자른 모양 밖으로 나가지 않아요.</p>' : ""}${field("마스크 (가장자리 흐리게 · 모양 뚫기)", "maskPreset", block.maskPreset, "select", MASK_PRESETS.map((item) => option(item, block.maskPreset, MASK_PRESET_LABELS[item])).join(""))}${block.maskPreset === "image" ? `${field("마스크 이미지 (PNG·SVG 링크 또는 /media 경로)", "maskImage", block.maskImage)}<button class="inspector-file" data-action="pick-mask-image" type="button">작은 마스크 파일 바로 넣기</button><div class="studio-fields studio-fields--two">${field("마스크 해석", "maskMode", block.maskMode, "select", option("alpha", block.maskMode, "투명도 (불투명한 곳만 보임)") + option("luminance", block.maskMode, "밝기 (흰색만 보임)"))}${field("맞춤", "maskSize", block.maskSize, "select", option("cover", block.maskSize, "꽉 채움") + option("contain", block.maskSize, "전체 보이기") + option("stretch", block.maskSize, "늘리기"))}${field("위치 (예: 50% 50%)", "maskPosition", block.maskPosition)}</div><p class="studio-help">PNG의 불투명한 부분(또는 밝은 부분)만 보여요. 붓 자국·찢어진 종이·글자 모양 마스크를 올려 보세요.</p>` : ""}<div class="studio-checks">${field("듀오톤 (두 가지 색으로 물들이기)", "duotone", block.duotone, "checkbox")}</div>${block.duotone ? `<div class="studio-fields studio-fields--two">${colorField("어두운 색", "duotoneDark", block.duotoneDark)}${colorField("밝은 색", "duotoneLight", block.duotoneLight)}</div><p class="studio-help">사진·영상·갤러리에 잘 어울려요. 두 색을 바꿔 보세요.</p>` : ""}${field("블렌드", "blendMode", block.blendMode, "select", ["normal", "multiply", "screen", "overlay", "difference", "exclusion", "color-burn", "color-dodge"].map((item) => option(item, block.blendMode)).join(""))}<div class="studio-fields studio-fields--two">${field("그림자 X", "shadowX", block.shadowX, "number")}${field("그림자 Y", "shadowY", block.shadowY, "number")}${field("그림자 번짐", "shadowBlur", block.shadowBlur, "number")}${field("그림자 색", "shadowColor", block.shadowColor)}</div>`;
   const visitorDragField = ["video", "audio", "embed"].includes(block.type) ? "" : field("방문자가 드래그", "publicDraggable", block.publicDraggable, "checkbox");
   const motionBody = `${field("등장", "motion.entrance.preset", block.motion.entrance.preset, "select", ["none", "fade", "rise", "fall", "slide-left", "slide-right", "scale", "blur", "rotate"].map((item) => option(item, block.motion.entrance.preset)).join(""))}<div class="studio-fields studio-fields--two">${field("트리거", "motion.entrance.trigger", block.motion.entrance.trigger, "select", option("load", block.motion.entrance.trigger, "페이지 열림") + option("scroll", block.motion.entrance.trigger, "스크롤 진입"))}${field("시간(ms)", "motion.entrance.duration", block.motion.entrance.duration, "number")}${field("지연(ms)", "motion.entrance.delay", block.motion.entrance.delay, "number")}${field("호버", "motion.hover.preset", block.motion.hover.preset, "select", ["none", "lift", "scale", "tilt", "glow", "invert", "fade"].map((item) => option(item, block.motion.hover.preset)).join("") + option("magnetic", block.motion.hover.preset, "magnetic · 자석"))}${field("반복", "motion.loop.preset", block.motion.loop.preset, "select", ["none", "float", "pulse", "spin", "bounce", "sway", "breathe"].map((item) => option(item, block.motion.loop.preset)).join(""))}${field("반복 시간(ms)", "motion.loop.duration", block.motion.loop.duration, "number")}${field("반복 방향", "motion.loop.direction", block.motion.loop.direction, "select", option("normal", block.motion.loop.direction, "정방향") + option("reverse", block.motion.loop.direction, "역방향") + option("alternate", block.motion.loop.direction, "왕복"))}${field("스크롤 패럴랙스", "parallax", block.parallax, "number")}${field("마우스 패럴랙스", "mouseParallax", block.mouseParallax, "number")}</div><div class="studio-checks">${field("스크롤 등장 한 번만", "motion.entrance.once", block.motion.entrance.once, "checkbox")}${visitorDragField}${block.fixed ? "" : field("스크롤 고정 (pin)", "pinEnabled", block.pinEnabled, "checkbox")}</div>${block.pinEnabled && !block.fixed ? `<div class="studio-fields studio-fields--two">${lf("화면 위에서 (px)", "pinTop", block.pinTop, "number")}${lf("고정 거리 (px)", "pinDistance", block.pinDistance, "number")}</div><p class="studio-help">요소 위쪽이 화면 위에서 지정한 위치에 닿으면, ‘고정 거리’만큼 스크롤하는 동안 그 자리에 머물러요. 다른 요소의 스크롤 모션과 함께 쓰면 장면이 넘어가는 스크롤 연출이 돼요.</p>` : ""}`;
   const motionLabSection = inspectorSection("MOTION LAB", "키프레임 · 타임라인 · 트리거", motionLabInspectorMarkup(block, selectedFrameId, blocks), { open: motionMode || block.motion.timeline.enabled, className: "studio-inspector-section--motion-lab" });
@@ -1596,8 +1726,8 @@ function getPath(target, path) {
 function defaultBlock(type, page) {
   const index = page.blocks.length;
   const maxZ = Math.max(0, ...page.blocks.map((block) => block.z));
-  const widths = { marquee: 720, text: 520, button: 220, line: 420, nav: 520, gallery: 640, embed: 560, audio: 420, component: 640, code: 560 };
-  const heights = { marquee: 72, text: 130, button: 64, line: 2, nav: 64, gallery: 420, embed: 315, audio: 64, component: 420, code: 360 };
+  const widths = { marquee: 720, text: 520, button: 220, line: 420, nav: 520, gallery: 640, embed: 560, audio: 420, component: 640, code: 560, form: 520 };
+  const heights = { marquee: 72, text: 130, button: 64, line: 2, nav: 64, gallery: 420, embed: 315, audio: 64, component: 420, code: 360, form: 470 };
   return normalizeBlock({
     id: uid(type),
     name: `${type[0].toUpperCase()}${type.slice(1)} ${index + 1}`,
@@ -1747,6 +1877,34 @@ function runPreflight(data) {
     || (block.type === "image" && block.gifPlayback === "auto" && isGIFSource(block.media || block.src))
   )));
   if (hasContinuousMotion && !data.settings.showMotionToggle) warnings.push("계속 움직이는 요소가 있지만 방문자용 모션 정지 버튼이 꺼져 있음");
+  // Studio 8 (C6·C7): SEO와 접근성 — 제목 구조, 대비, 글자 크기, 공유 이미지, 폼 주소, http 링크
+  const luminance = (hex) => { const rgb = hexToRGB(hex); if (!rgb) return null; const [r, g, b] = rgb.map((value) => { const channel = value / 255; return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const contrastRatio = (a, b) => { const la = luminance(a); const lb = luminance(b); if (la == null || lb == null) return null; return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); };
+  data.pages.filter((page) => page.visibility !== "draft").forEach((page) => {
+    const headings = page.blocks.filter((block) => block.type === "text" && block.visible && /^h[1-6]$/.test(block.htmlTag));
+    const h1s = headings.filter((block) => block.htmlTag === "h1");
+    if (!h1s.length && page.blocks.some((block) => block.type === "text" && block.visible)) warnings.push(`${page.name}: 대제목(h1)이 없어요 · 가장 큰 제목의 ‘HTML 의미’를 h1으로 바꾸세요`);
+    if (h1s.length > 1) warnings.push(`${page.name}: 대제목(h1)이 ${h1s.length}개예요 · 하나만 남기세요`);
+    const levels = headings.slice().sort((a, b) => a.y - b.y).map((block) => Number(block.htmlTag[1]));
+    for (let index = 1; index < levels.length; index += 1) { if (levels[index] - levels[index - 1] > 1) { warnings.push(`${page.name}: 제목 단계가 h${levels[index - 1]}에서 h${levels[index]}로 건너뛰어요`); break; } }
+    if (!page.seo.description.trim()) warnings.push(`${page.name}: 검색 설명(SEO)이 비어 있어요`);
+    if (page.id === data.settings.defaultPageId && !page.seo.image.trim() && !data.settings.seo.image) warnings.push(`${page.name}: 공유 이미지(og:image)가 없어요 · 링크 미리보기에 그림이 안 나와요`);
+    page.blocks.filter((block) => block.visible).forEach((block) => {
+      if (["text", "button"].includes(block.type)) {
+        const mobile = block.responsive?.mobile?.fontSize;
+        if (block.fontSize < 12 || (mobile != null && mobile < 12)) warnings.push(`${page.name} / ${block.name}: 글자가 12px보다 작아요 (읽기 어려움)`);
+        const behind = block.background !== "transparent" ? block.background : page.canvas.background;
+        const ratio = contrastRatio(block.color, behind);
+        if (ratio != null && ratio < 3) warnings.push(`${page.name} / ${block.name}: 글자색과 배경 대비가 낮아요 (${ratio.toFixed(1)}:1 · 권장 4.5:1)`);
+      }
+      if (block.type === "button" && !block.content.trim() && !block.ariaLabel.trim()) warnings.push(`${page.name} / ${block.name}: 버튼에 글자나 접근성 이름이 없어요`);
+      if (block.type === "form" && !safeURL(block.formEndpoint, { link: true })) warnings.push(`${page.name} / ${block.name}: 폼의 받을 주소(엔드포인트)가 없어요 · 보내기가 안 돼요`);
+      if (block.action.type === "external" && /^http:\/\//i.test(block.action.url)) warnings.push(`${page.name} / ${block.name}: http:// 링크예요 · https로 바꾸는 게 안전해요`);
+      if (block.hoverEffect === "swap" && !block.hoverSrc.trim()) warnings.push(`${page.name} / ${block.name}: 호버 교체 이미지가 비어 있어요`);
+      if (block.maskPreset === "image" && !block.maskImage.trim()) warnings.push(`${page.name} / ${block.name}: 마스크 이미지가 비어 있어서 요소가 안 보일 수 있어요`);
+    });
+  });
+  if (!data.settings.siteURL) warnings.push("사이트 설정에 공개 주소가 없어요 · sitemap.xml을 만들 때 필요해요");
   return warnings;
 }
 
@@ -1764,6 +1922,47 @@ export function bindArchiveViewer(source, pageOrId = "") {
   let paused = false;
   let scale = 1;
   let layout = currentLayout(page, data.settings);
+
+  // Studio 8 (C4): 폼 — fetch로 보내고 결과를 같은 자리에 표시 (JSON 응답을 주는 폼 서비스 엔드포인트)
+  qa("[data-archive-form]").forEach((form) => {
+    const submit = async (event) => {
+      event.preventDefault();
+      const statusNode = form.querySelector(".canvas-form__status");
+      const say = (text, kind = "") => { if (!statusNode) return; statusNode.hidden = false; statusNode.textContent = text; statusNode.dataset.kind = kind; };
+      const endpoint = form.getAttribute("action") || "";
+      if (!/^https?:\/\//i.test(endpoint)) { say("받을 주소가 아직 설정되지 않았어요.", "error"); return; }
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      const button = form.querySelector('button[type="submit"]');
+      if (button) button.disabled = true;
+      say("보내는 중…");
+      try {
+        const response = await fetch(endpoint, { method: "POST", body: new FormData(form), headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error(String(response.status));
+        say(form.dataset.success || "보냈어요.", "ok"); form.reset();
+      } catch (error) { say("보내지 못했어요. 잠시 후 다시 시도하거나 이메일로 보내주세요.", "error"); }
+      if (button) button.disabled = false;
+    };
+    form.addEventListener("submit", submit);
+    cleanups.push(() => form.removeEventListener("submit", submit));
+  });
+
+  // Studio 8 (C5): 방문자 다크 모드 — 페이지 배경과 글자색만 바꾼다. 선택은 localStorage에 기억.
+  if (data.settings.theme.toggle) {
+    const root = document.documentElement;
+    root.style.setProperty("--archive-dark-bg", data.settings.theme.darkBackground);
+    root.style.setProperty("--archive-dark-text", data.settings.theme.darkText);
+    root.classList.toggle("archive-dark-dim-media", data.settings.theme.dimMedia);
+    let stored = ""; try { stored = localStorage.getItem("psj-archive-theme") || ""; } catch (error) { stored = ""; }
+    const prefersDark = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+    const applyTheme = (dark) => { root.classList.toggle("archive-dark", dark); button.textContent = dark ? "☀" : "☾"; button.setAttribute("aria-pressed", String(dark)); button.title = dark ? "밝은 화면으로" : "어두운 화면으로"; };
+    const button = document.createElement("button");
+    button.className = "archive-theme-toggle"; button.type = "button"; button.setAttribute("aria-label", "다크 모드 전환");
+    document.body.append(button);
+    applyTheme(stored ? stored === "dark" : prefersDark);
+    const toggle = () => { const dark = !root.classList.contains("archive-dark"); applyTheme(dark); try { localStorage.setItem("psj-archive-theme", dark ? "dark" : "light"); } catch (error) { /* ignore */ } };
+    button.addEventListener("click", toggle);
+    cleanups.push(() => { button.remove(); });
+  }
 
   // The artboard for the current screen (desktop/tablet/mobile) is chosen by media-query CSS;
   // here it is scaled to the window width (or never enlarged with scaleMode "max-100").
@@ -2382,7 +2581,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   const studio = document.querySelector("[data-archive-studio]");
   if (!studio) return;
   let data = normalizeArchiveData(initialData);
-  const published = normalizeArchiveData(publishedData);
+  let published = normalizeArchiveData(publishedData);
   const draftInfo = getArchiveDraftInfo(published);
   let draftBase = draftInfo.base || fingerprint(published);
   let draftConflict = draftInfo.stale;
@@ -2449,7 +2648,8 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     return frame;
   };
   const motionHorizon = () => Math.max(100, ...allBlocks().filter((block) => block.motion.timeline.enabled && block.motion.timeline.trigger !== "scroll").map((block) => block.motion.timeline.delay + block.motion.timeline.duration));
-  const status = (message) => { const node = studio.querySelector("[data-save-status]"); if (node) node.textContent = message; };
+  const QUIET_STATUS = /자동 저장|편집 중|^키프레임 |^확대 |^화면 맞춤|^선택 없음$/;
+  const status = (message, { quiet = false } = {}) => { const node = studio.querySelector("[data-save-status]"); if (node) node.textContent = message; if (!quiet && !QUIET_STATUS.test(message)) toast(message); };
 
   const clearStudioMotion = () => {
     if (studioMotionFrame) cancelAnimationFrame(studioMotionFrame);
@@ -2622,6 +2822,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     board.style.setProperty("--studio-zoom", zoom);
     sizer.style.width = `${box.width * zoom}px`;
     sizer.style.height = `${box.height * zoom}px`;
+    drawRulersSoon();
   };
 
   const fitZoom = () => {
@@ -2652,6 +2853,8 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     board.innerHTML = archiveCanvasMarkup(data, currentPage(), { editing: true, layout });
     reattachLiveComponents(board, kept);
     editorComponents = mountComponents([board], { editing: true, getLayout: activeLayout });
+    if (!allBlocks().length) board.querySelector("[data-archive-canvas]")?.insertAdjacentHTML("beforeend", emptyStateMarkup());
+    renderColumns(); renderPageGuides();
     markSelectedElements();
     applyZoom();
     if (studioMode === "motion") requestAnimationFrame(() => scrubStudioMotion(motionPlayhead));
@@ -2686,19 +2889,47 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     if (selectedId) board.querySelector(`[data-block-id="${CSS.escape(selectedId)}"]`)?.classList.add("is-primary");
     board.classList.toggle("is-multi", selectedIds.length > 1);
     drawSelectionBox();
+    drawRulersSoon();
   };
   const drawSelectionBox = () => {
     const board = canvas();
     if (!board) return;
     board.querySelector(".studio-selection-box")?.remove();
+    board.querySelector(".studio-float-toolbar")?.remove();
     const blocks = selectedBlocks();
-    if (blocks.length < 2) return;
+    if (!blocks.length || studioMode !== "design" || textEditing) return;
     const bounds = boundsOf(blocks);
-    const box = document.createElement("div");
-    box.className = "studio-selection-box";
-    box.style.cssText = `left:${bounds.left}px;top:${bounds.top}px;width:${bounds.width}px;height:${bounds.height}px`;
-    box.innerHTML = `<span>${blocks.length}개 · ${Math.round(bounds.width)}×${Math.round(bounds.height)}</span>`;
-    board.append(box);
+    if (blocks.length >= 2) {
+      const box = document.createElement("div");
+      box.className = "studio-selection-box";
+      box.style.cssText = `left:${bounds.left}px;top:${bounds.top}px;width:${bounds.width}px;height:${bounds.height}px`;
+      box.innerHTML = `<span>${blocks.length}개 · ${Math.round(bounds.width)}×${Math.round(bounds.height)}</span>`;
+      board.append(box);
+    }
+    board.append(floatToolbarFor(blocks, bounds));
+  };
+  // Studio 8: a small toolbar floats above the selection (single or multi) with the most used actions.
+  const floatToolbarFor = (blocks, bounds) => {
+    const many = blocks.length > 1; const block = blocks[0];
+    const allLocked = blocks.every((item) => item.locked); const anyVisible = blocks.some((item) => item.visible);
+    const item = (id, label, icon, { disabled = false, keys = "" } = {}) => `<button data-menu="${id}" title="${label}${keys ? ` (${keys})` : ""}" aria-label="${label}" type="button" ${disabled ? "disabled" : ""}>${icon}</button>`;
+    const bar = document.createElement("div");
+    bar.className = "studio-float-toolbar";
+    const gap = 44 / zoom;
+    const top = bounds.top - gap >= 0 ? bounds.top - gap : bounds.top + bounds.height + 10 / zoom;
+    bar.style.cssText = `left:${Math.max(0, bounds.left)}px;top:${top}px`;
+    bar.innerHTML = [
+      !many && ["text", "button"].includes(block.type) ? item("edit-text", "글자 편집", "<b>T</b>", { keys: "Enter", disabled: block.locked }) : "",
+      many ? alignToolbarMarkup(blocks.length) : `${item("align-center", "캔버스 가로 가운데", ALIGN_ICONS.center, { disabled: allLocked })}${item("align-middle", "첫 화면 세로 가운데", ALIGN_ICONS.middle, { disabled: allLocked })}`,
+      "<i></i>",
+      item("duplicate", many ? `${blocks.length}개 복제` : "복제", "⧉", { keys: "Ctrl+D", disabled: allLocked }),
+      many ? "" : item("forward", "한 칸 앞으로", "↑", { keys: "Ctrl+]" }) + item("backward", "한 칸 뒤로", "↓", { keys: "Ctrl+[" }),
+      item("lock", allLocked ? "잠금 해제" : "잠금", allLocked ? "🔓" : "🔒", { keys: "Ctrl+Shift+L" }),
+      item("hide", anyVisible ? "숨기기" : "표시", anyVisible ? "◌" : "◉", { keys: "Ctrl+Shift+H", disabled: allLocked }),
+      "<i></i>",
+      item("delete", many ? `${blocks.length}개 삭제` : "삭제", "✕", { keys: "Delete", disabled: allLocked }),
+    ].join("");
+    return bar;
   };
 
   let layerFilter = "";
@@ -2750,7 +2981,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
 
   const renderSelection = ({ pages = false } = {}) => {
     if (pages) renderPages();
-    renderCanvas(); renderLayers(); renderInspector(); renderMotionDock();
+    renderCanvas(); renderLayers(); renderInspector(); renderMotionDock(); renderAssets();
   };
 
   const selectBlock = (id) => {
@@ -2966,8 +3197,9 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     const current = activeLayout();
     const ids = [];
     let uploadNeeded = 0; let saved = 0;
+    const pendingUploads = [];
     const sourceFor = (item) => {
-      if (item.type !== "image" || !item.result || item.result.bytes > INLINE_LIMIT) { uploadNeeded += 1; return { media: mediaPathFor(item.file), src: "" }; }
+      if (item.type !== "image" || !item.result || item.result.bytes > INLINE_LIMIT) { uploadNeeded += 1; pendingUploads.push(item.file); return { media: mediaPathFor(item.file), src: "" }; }
       if (item.result.compressed) saved += Math.max(0, item.result.from - item.result.bytes);
       return { media: "", src: item.result.dataURL };
     };
@@ -3008,9 +3240,10 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     const draftSize = JSON.stringify(data).length;
     const parts = [`${ids.length}개 추가했어요`];
     if (saved > 200_000) parts.push(`WebP로 ${(saved / 1_000_000).toFixed(1)}MB 줄임`);
-    if (uploadNeeded) parts.push(`큰 파일 ${uploadNeeded}개는 GitHub media 폴더에 같은 이름으로 올려야 보여요`);
+    if (uploadNeeded) parts.push(githubToken() ? `큰 파일 ${uploadNeeded}개는 GitHub에 자동으로 올리는 중 (게시 후 보여요)` : `큰 파일 ${uploadNeeded}개는 GitHub media 폴더에 같은 이름으로 올려야 보여요 · 게시 창(Ctrl+Shift+P)에 토큰을 넣으면 자동`);
     if (draftSize > 3_000_000) parts.push(`초안이 ${(draftSize / 1_000_000).toFixed(1)}MB예요 · 이미지가 많으면 GitHub media에 올리고 경로로 넣는 게 안전해요`);
     status(parts.join(" · "));
+    if (pendingUploads.length && githubToken()) uploadFilesToGitHub(pendingUploads);
     return true;
   };
 
@@ -3203,9 +3436,127 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       case "align-center": alignSelected("center"); break;
       case "align-middle": alignSelected("middle"); break;
       case "page-settings": selectedId = ""; selectedIds = []; renderSelection(); break;
+      case "file-download": studio.querySelector('[data-action="download"]')?.click(); break;
+      case "file-import": studio.querySelector('[data-action="import"]')?.click(); break;
+      case "file-reset": studio.querySelector('[data-action="reset-published"]')?.click(); break;
+      case "file-publish-copy": publishByCopy(); break;
+      case "checkpoints": openCheckpoints(); break;
+      case "publish-modal": openPublish(); break;
+      case "templates": openTemplates(); break;
       default: break;
     }
   };
+  // ===== Studio 8 (A15): 그라디언트 편집기 — 배경 칸에 linear/radial/conic 그라디언트를 써 준다 =====
+  const parseGradient = (value) => {
+    const match = /^(linear|radial|conic)-gradient\((.*)\)$/s.exec(String(value || "").trim());
+    if (!match) return null;
+    const type = match[1]; const parts = match[2].split(/,(?![^()]*\))/).map((part) => part.trim());
+    let angle = 180; let stops = parts;
+    if (type === "linear" && /^-?\d+(\.\d+)?deg$/.test(parts[0])) { angle = parseFloat(parts[0]); stops = parts.slice(1); }
+    else if (type === "linear" && /^to /.test(parts[0])) { angle = { "to top": 0, "to right": 90, "to bottom": 180, "to left": 270 }[parts[0]] ?? 180; stops = parts.slice(1); }
+    else if (type === "conic" && /^from /.test(parts[0])) { angle = parseFloat(parts[0].replace("from", "")) || 0; stops = parts.slice(1); }
+    else if (type !== "linear" && /^(circle|ellipse|closest|farthest|at )/.test(parts[0])) stops = parts.slice(1);
+    const parsed = stops.map((stop) => { const found = /^(#[0-9a-f]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-z]+)\s*(-?\d+(?:\.\d+)?)?%?$/i.exec(stop); return found ? { color: found[1], at: found[2] != null ? Number(found[2]) : null } : null; }).filter(Boolean);
+    if (parsed.length < 2) return null;
+    parsed.forEach((stop, index) => { if (stop.at == null) stop.at = Math.round(index / (parsed.length - 1) * 100); });
+    return { type, angle, stops: parsed };
+  };
+  const gradientCSS = ({ type, angle, stops }) => {
+    const list = stops.map((stop) => `${stop.color} ${stop.at}%`).join(", ");
+    return type === "linear" ? `linear-gradient(${angle}deg, ${list})` : type === "radial" ? `radial-gradient(circle at 50% 50%, ${list})` : `conic-gradient(from ${angle}deg at 50% 50%, ${list})`;
+  };
+  const GRADIENT_PRESETS = {
+    sunset: { type: "linear", angle: 135, stops: [{ color: "#ff9a5b", at: 0 }, { color: "#ff3d7f", at: 55 }, { color: "#3b2bff", at: 100 }] },
+    ocean: { type: "linear", angle: 160, stops: [{ color: "#0f2027", at: 0 }, { color: "#203a43", at: 50 }, { color: "#2c5364", at: 100 }] },
+    mono: { type: "linear", angle: 180, stops: [{ color: "#ffffff", at: 0 }, { color: "#111111", at: 100 }] },
+    fade: { type: "linear", angle: 180, stops: [{ color: "#ffffff", at: 0 }, { color: "rgba(255,255,255,0)", at: 100 }] },
+    glow: { type: "radial", angle: 0, stops: [{ color: "#ffffff", at: 0 }, { color: "#ffd0c2", at: 40 }, { color: "#ff5a36", at: 100 }] },
+  };
+  const openGradientEditor = () => {
+    const block = selected(); if (!block) return;
+    if (block.locked) { status("잠긴 레이어예요 · 먼저 잠금을 해제하세요"); return; }
+    const fieldNode = () => studio.querySelector('[data-color-field][data-field="background"]');
+    const state = clone(parseGradient(block.background) || { type: "linear", angle: 135, stops: [{ color: isHexColor(block.background) ? block.background : "#4d5cff", at: 0 }, { color: "#ff5a36", at: 100 }] });
+    const modal = openModal({ title: "배경 그라디언트", subtitle: "색 2~5개 · 각도·종류 · 바로 미리보기", body: `<div class="studio-gradient"><div class="studio-gradient__preview" data-gradient-preview></div><div class="studio-fields studio-fields--two"><label><span>종류</span><select data-gradient-type><option value="linear">선형</option><option value="radial">원형</option><option value="conic">원뿔 (각도로 도는)</option></select></label><label><span>각도 (°)</span><input data-gradient-angle type="number" min="0" max="360" step="1"></label></div><div data-gradient-stops></div><div class="studio-modal__actions studio-modal__actions--left"><button data-gradient-add type="button">＋ 색 추가</button><span class="studio-gradient__presets"><button data-gradient-preset="sunset" type="button">노을</button><button data-gradient-preset="ocean" type="button">바다</button><button data-gradient-preset="mono" type="button">흑백</button><button data-gradient-preset="fade" type="button">흰색→투명</button><button data-gradient-preset="glow" type="button">빛</button></span></div><div class="studio-modal__actions"><button data-gradient-clear type="button">그라디언트 없애기</button><button class="is-primary" data-gradient-apply type="button">닫기</button></div></div>` });
+    const preview = modal.querySelector("[data-gradient-preview]"); const stopsNode = modal.querySelector("[data-gradient-stops]");
+    const typeSelect = modal.querySelector("[data-gradient-type]"); const angleInput = modal.querySelector("[data-gradient-angle]");
+    const apply = () => { const node = fieldNode(); if (!node) return; node.value = gradientCSS(state); node.dispatchEvent(new Event("input", { bubbles: true })); };
+    const render = () => {
+      typeSelect.value = state.type; angleInput.value = String(state.angle); angleInput.disabled = state.type === "radial";
+      stopsNode.innerHTML = state.stops.map((stop, index) => `<div class="studio-gradient__stop"><input type="color" value="${isHexColor(stop.color) ? stop.color : "#000000"}" data-stop-color="${index}" aria-label="색 ${index + 1}"><input type="text" value="${escapeHTML(stop.color)}" data-stop-text="${index}" aria-label="색 값 ${index + 1}"><input type="range" min="0" max="100" value="${stop.at}" data-stop-at="${index}" aria-label="위치 ${index + 1}"><output>${stop.at}%</output><button data-stop-remove="${index}" type="button" ${state.stops.length <= 2 ? "disabled" : ""} aria-label="색 ${index + 1} 삭제">✕</button></div>`).join("");
+      preview.style.background = gradientCSS(state);
+    };
+    modal.addEventListener("input", (event) => {
+      const target = event.target;
+      if (target === typeSelect) { state.type = target.value; render(); }
+      else if (target === angleInput) { state.angle = number(target.value, state.angle, 0, 360); preview.style.background = gradientCSS(state); }
+      else if (target.dataset.stopColor != null) { state.stops[target.dataset.stopColor].color = target.value; target.closest(".studio-gradient__stop").querySelector("[data-stop-text]").value = target.value; preview.style.background = gradientCSS(state); }
+      else if (target.dataset.stopText != null) { const value = target.value.trim(); if (/^(#[0-9a-f]{3,8}$|rgba?\(|hsla?\(|transparent$|[a-z]+$)/i.test(value)) { state.stops[target.dataset.stopText].color = value; if (isHexColor(value)) target.closest(".studio-gradient__stop").querySelector("[data-stop-color]").value = value; preview.style.background = gradientCSS(state); } else return; }
+      else if (target.dataset.stopAt != null) { state.stops[target.dataset.stopAt].at = number(target.value, 0, 0, 100); target.nextElementSibling.textContent = `${state.stops[target.dataset.stopAt].at}%`; preview.style.background = gradientCSS(state); }
+      else return;
+      apply();
+    });
+    modal.addEventListener("click", (event) => {
+      if (event.target.closest("[data-gradient-add]")) { if (state.stops.length >= 5) { status("색은 5개까지예요"); return; } state.stops.push({ color: "#ffffff", at: 100 }); render(); apply(); return; }
+      const remove = event.target.closest("[data-stop-remove]");
+      if (remove) { state.stops.splice(Number(remove.dataset.stopRemove), 1); render(); apply(); return; }
+      const preset = event.target.closest("[data-gradient-preset]")?.dataset.gradientPreset;
+      if (preset && GRADIENT_PRESETS[preset]) { Object.assign(state, clone(GRADIENT_PRESETS[preset])); render(); apply(); return; }
+      if (event.target.closest("[data-gradient-clear]")) { const node = fieldNode(); if (node) { node.value = "transparent"; node.dispatchEvent(new Event("input", { bubbles: true })); } modal.close(); return; }
+      if (event.target.closest("[data-gradient-apply]")) { apply(); modal.close(); }
+    });
+    render(); apply();
+  };
+
+  // ===== Studio 8: 명령 팔레트(Ctrl+K) · 단축키 표(?) · 파일 메뉴 =====
+  const clickAction = (selector) => () => { const button = studio.querySelector(selector); if (button) button.click(); else status("지금 화면에서는 쓸 수 없는 명령이에요"); };
+  const paletteCommands = () => {
+    const adds = [["text", "텍스트"], ["button", "버튼"], ["shape", "도형"], ["line", "선"], ["image", "이미지·GIF"], ["video", "영상"], ["audio", "오디오"], ["gallery", "갤러리"], ["embed", "임베드"], ["marquee", "반복 글자"], ["nav", "페이지 메뉴"], ["form", "폼 (연락)"], ["code", "코드 블록"]];
+    return [
+      ...adds.map(([type, label]) => ({ id: `add-${type}`, group: "추가", label: `${label} 추가`, keywords: type, run: () => addBlock(defaultBlock(type, currentPage())) })),
+      { id: "add-templates", group: "추가", label: "섹션 템플릿…", hint: "히어로 · 그리드 · 소개 · 연락처", run: clickAction('[data-action="open-templates"]') },
+      ...[...componentMetas.values()].filter((meta) => !meta.error).map((meta) => ({ id: `component-${meta.id}`, group: "컴포넌트", label: `${meta.name} 추가`, hint: String(meta.description || "").slice(0, 44), keywords: meta.id, run: clickAction(`[data-add-component="${meta.id}"]`) })),
+      ...data.pages.map((page) => ({ id: `page-${page.id}`, group: "페이지", label: `${page.name} 열기`, hint: page.visibility === "listed" ? "메뉴 표시" : page.visibility === "unlisted" ? "링크 전용" : "초안", keywords: page.slug, run: () => selectPage(page.id) })),
+      { id: "new-page", group: "페이지", label: "새 메뉴 페이지", run: () => createPage("listed") },
+      { id: "new-unlisted", group: "페이지", label: "새 링크 전용 페이지", run: () => createPage("unlisted") },
+      { id: "dup-page", group: "페이지", label: "현재 페이지 복제", run: () => { selectedId = ""; selectedIds = []; renderSelection(); studio.querySelector('[data-action="duplicate-page"]')?.click(); } },
+      ...["desktop", "tablet", "mobile"].map((item) => ({ id: `layout-${item}`, group: "보기", label: `${LAYOUT_LABELS[item]} 배치 편집`, run: () => switchLayout(item) })),
+      { id: "mode-design", group: "보기", label: "Design 모드", run: clickAction('[data-studio-mode="design"]') },
+      { id: "mode-motion", group: "보기", label: "Motion 모드 (Motion Lab)", run: clickAction('[data-studio-mode="motion"]') },
+      { id: "zoom-fit", group: "보기", label: "화면 맞춤", keys: "Ctrl+0", run: clickAction('[data-action="zoom-fit"]') },
+      { id: "zoom-100", group: "보기", label: "100%로 보기", run: () => setZoom(1) },
+      { id: "rulers", group: "보기", label: "눈금자·가이드 켜기/끄기", keys: "Ctrl+R", run: clickAction('[data-action="toggle-rulers"]') },
+      { id: "device", group: "확인", label: "기기 미리보기 (폰·태블릿)", run: clickAction('[data-action="device-preview"]') },
+      { id: "preview", group: "확인", label: "새 탭에서 미리보기", run: clickAction('[data-action="preview"]') },
+      { id: "preflight", group: "확인", label: "검수 실행", run: clickAction('[data-action="preflight"]') },
+      { id: "download", group: "파일", label: "백업 JSON 내려받기", run: clickAction('[data-action="download"]') },
+      { id: "import", group: "파일", label: "JSON 불러오기", run: clickAction('[data-action="import"]') },
+      { id: "reset", group: "파일", label: "게시본으로 되돌리기", run: clickAction('[data-action="reset-published"]') },
+      { id: "publish", group: "파일", label: "게시 (GitHub 연결)…", keys: "Ctrl+Shift+P", run: () => openPublish() },
+      { id: "checkpoint-save", group: "파일", label: "체크포인트 저장", keys: "Ctrl+Shift+S", run: () => quickCheckpoint() },
+      { id: "checkpoints", group: "파일", label: "체크포인트 목록…", run: () => openCheckpoints() },
+      { id: "page-templates", group: "페이지", label: "템플릿으로 새 페이지…", run: () => openTemplates("pages") },
+      { id: "select-all", group: "선택", label: "모두 선택", keys: "Ctrl+A", run: () => selectAll() },
+      { id: "deselect", group: "선택", label: "선택 해제 · 페이지 설정 보기", keys: "Esc", run: () => { selectedId = ""; selectedIds = []; renderSelection(); } },
+      { id: "shortcuts", group: "도움", label: "단축키 표", keys: "?", run: () => openShortcuts() },
+    ];
+  };
+  const openPalette = () => { finishTextEdit(); closeContextMenu(); openCommandPalette({ commands: paletteCommands() }); };
+  const openShortcuts = () => { closeContextMenu(); openModal({ title: "단축키", subtitle: "Studio 8", body: shortcutSheetMarkup(), wide: true }); };
+  const openFileMenu = (anchor) => {
+    const rect = anchor.getBoundingClientRect();
+    openContextMenu([
+      { id: "file-download", label: "백업 JSON 내려받기" },
+      { id: "file-import", label: "JSON 불러오기" },
+      "-",
+      { id: "checkpoints", label: "체크포인트…", keys: "Ctrl+Shift+S" },
+      "-",
+      { id: "publish-modal", label: "게시 (GitHub 연결)…", keys: "Ctrl+Shift+P" },
+      { id: "file-publish-copy", label: "게시 · 복사해서 GitHub에 붙여넣기" },
+      { id: "file-reset", label: "게시본으로 되돌리기" },
+    ], rect.left, rect.bottom + 4);
+  };
+
   studio.addEventListener("contextmenu", (event) => {
     if (studioMode !== "design") return;
     if (textEditing && event.target.closest(".is-text-editing")) return;
@@ -3370,6 +3721,23 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       if (performance.now() - suppressCanvasClick < 400) { suppressCanvasClick = 0; return; }
       finishTextEdit(); selectedId = ""; selectedIds = []; renderSelection(); return;
     }
+    const assetSelect = event.target.closest("[data-asset-select]");
+    if (assetSelect) { const asset = assetAt(assetSelect.dataset.assetSelect); if (asset) selectAssetUse(asset); return; }
+    const assetInsert = event.target.closest("[data-asset-insert]");
+    if (assetInsert) { const asset = assetAt(assetInsert.dataset.assetInsert); if (asset) insertAsset(asset); return; }
+    const assetReplace = event.target.closest("[data-asset-replace]");
+    if (assetReplace) {
+      const asset = assetAt(assetReplace.dataset.assetReplace); if (!asset) return;
+      const next = prompt(`이 파일을 쓰는 ${asset.uses.length}곳을 모두 바꿔요.\n새 주소 또는 /media/파일명:`, asset.url.startsWith("data:") ? "" : asset.url);
+      if (next != null) replaceAsset(asset, next); return;
+    }
+    const swatch = event.target.closest("[data-swatch]");
+    if (swatch) { applyColorToActiveField(swatch.dataset.swatch); return; }
+    if (event.target.closest("[data-eyedropper]")) {
+      if (typeof EyeDropper !== "function") { status("이 브라우저는 스포이트를 지원하지 않아요 (Chrome·Edge 권장)"); return; }
+      try { const picked = await new EyeDropper().open(); applyColorToActiveField(picked.sRGBHex); } catch (error) { /* 취소 */ }
+      return;
+    }
     const alignButton = event.target.closest("[data-align]");
     if (alignButton) { alignSelected(alignButton.dataset.align); return; }
     const distributeButton = event.target.closest("[data-distribute]");
@@ -3510,6 +3878,18 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     const action = event.target.closest("[data-action]")?.dataset.action;
     if (!action) return;
     const block = selected();
+    if (action === "zoom-in") { setZoom(zoom * 1.25); status(`확대 ${Math.round(zoom * 100)}%`); return; }
+    if (action === "zoom-out") { setZoom(zoom / 1.25); status(`확대 ${Math.round(zoom * 100)}%`); return; }
+    if (action === "zoom-fit") { fitZoom(); applyZoom(); status(`화면 맞춤 · ${Math.round(zoom * 100)}%`); return; }
+    if (action === "command-palette") { openPalette(); return; }
+    if (action === "open-templates") { openTemplates(); return; }
+    if (action === "checkpoints") { openCheckpoints(); return; }
+    if (action === "publish") { openPublish(); return; }
+    if (action === "toggle-rulers") { setRulers(!rulersOn); return; }
+    if (action === "toggle-columns") { setColumns(!columnsOn); return; }
+    if (action === "clear-guides") { currentPage().guides = { v: [], h: [] }; persist(); renderPageGuides(); renderInspector(); status("가이드를 모두 지웠어요"); return; }
+    if (action === "shortcuts") { openShortcuts(); return; }
+    if (action === "file-menu") { openFileMenu(event.target.closest("[data-action]")); return; }
     if (action === "lock-selected") { setLockedSelected(!selectedBlocks().every((item) => item.locked)); return; }
     if (action === "hide-selected") { setHiddenSelected(selectedBlocks().some((item) => item.visible)); return; }
     if (action === "copy-selected") { copySelected(); return; }
@@ -3570,6 +3950,10 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       block.z = action === "front" ? Math.max(0, ...allBlocks().map((item) => item.z)) + 1 : Math.max(0, Math.min(...allBlocks().map((item) => item.z)) - 1); persist(); renderSelection();
     } else if (action === "pick-image" && block?.type === "image") {
       studio.querySelector("[data-image-picker]").dataset.target = "image"; studio.querySelector("[data-image-picker]").click();
+    } else if (action === "pick-mask-image" && block) {
+      studio.querySelector("[data-image-picker]").dataset.target = "mask"; studio.querySelector("[data-image-picker]").click();
+    } else if (action === "gradient-edit" && block) {
+      openGradientEditor();
     } else if (action === "pick-button-image" && block?.type === "button") {
       studio.querySelector("[data-image-picker]").dataset.target = "button"; studio.querySelector("[data-image-picker]").click();
     } else if (["upload-media", "upload-video", "upload-audio"].includes(action)) {
@@ -3587,7 +3971,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     }
     else if (action === "download") {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "archive-v5-studio.json"; link.click(); URL.revokeObjectURL(link.href);
-    } else if (action === "publish") {
+    } else if (action === "publish-copy") {
       if (draftConflict && !confirm("GitHub의 현재 게시본이 이 로컬 초안을 만든 뒤 변경됐어요. 먼저 JSON 백업을 저장하고 차이를 확인하는 것이 안전해요. 그래도 게시 준비를 계속할까요?")) return;
       window.open(GITHUB_EDIT_URL, "_blank", "noopener");
       try { await navigator.clipboard.writeText(JSON.stringify(data, null, 2)); status("복사 완료 — 열린 GitHub에서 전체 붙여넣고 Commit changes"); } catch (error) { status("백업 버튼으로 JSON을 받은 뒤 GitHub에서 교체하세요"); }
@@ -3596,6 +3980,17 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
 
   studio.addEventListener("input", (event) => {
     if (event.target.matches("[data-motion-scrub]")) { scrubStudioMotion(number(event.target.value, 0, 0, 100)); return; }
+    // Studio 8 (B17): 색 고르기 ↔ 글자 칸 동기화
+    if (event.target.matches("[data-color-twin]")) {
+      const text = event.target.closest(".studio-color__row")?.querySelector("[data-field]");
+      if (!text) return;
+      text.value = event.target.value; text.dispatchEvent(new Event("input", { bubbles: true })); return;
+    }
+    if (event.target.matches("[data-color-field]")) {
+      lastColorField = event.target.dataset.field;
+      const twin = event.target.closest(".studio-color__row")?.querySelector("[data-color-twin]");
+      if (twin && isHexColor(event.target.value)) twin.value = event.target.value.trim();
+    }
     // Studio 7: 다중 선택 패널의 공통 값
     const multiInput = event.target.closest("[data-multi-field]");
     if (multiInput) {
@@ -3608,6 +4003,15 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
         else block[key] = number(multiInput.value, block[key]);
       });
       persist(); renderCanvas(); renderLayers(); return;
+    }
+    const formField = event.target.closest("[data-form-field]");
+    if (formField) {
+      const block = selected();
+      if (!block || block.type !== "form") return;
+      const set = new Set(block.formFields);
+      if (formField.checked) set.add(formField.dataset.formField); else set.delete(formField.dataset.formField);
+      block.formFields = FORM_FIELDS.filter((name) => set.has(name));
+      persist(); renderCanvas(); return;
     }
     const navPageInput = event.target.closest("[data-nav-page-id]");
     if (navPageInput) {
@@ -3694,7 +4098,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     if (renderLater) renderCanvasSoon(cleanPath.startsWith("code.") || /custom/.test(cleanPath) ? 500 : 160); else renderCanvas();
     renderLayers(); renderMotionDock(); if (target === page) renderPages();
     if (target === block && ["motion.timeline.enabled", "motion.timeline.trigger", "motion.timeline.infinite", "component", "fixed", "isGlobal", "pinEnabled", "layoutHidden"].includes(cleanPath)) renderInspector();
-    if (target === data && ["settings.smoothScroll.enabled"].includes(cleanPath)) studio.querySelector(".studio-site-settings__body").innerHTML = siteSettingsMarkup(data);
+    if (target === data && ["settings.smoothScroll.enabled", "settings.theme.toggle"].includes(cleanPath)) studio.querySelector(".studio-site-settings__body").innerHTML = siteSettingsMarkup(data);
     if (target === page && (cleanPath.startsWith("canvas.") || cleanPath.startsWith("layouts."))) {
       const summary = studio.querySelector("[data-page-size-summary]");
       const box = layoutBox(page, activeLayout());
@@ -3704,11 +4108,12 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   });
 
   studio.addEventListener("change", (event) => {
+    if (event.target.matches("[data-color-field], [data-color-twin]")) rememberColor(event.target.value);
     if (event.target.matches("[data-zoom]")) { zoom = number(event.target.value, 0.5, 0.1, 2); applyZoom(); return; }
     if (event.target.matches("[data-motion-speed]")) { motionPreviewSpeed = number(event.target.value, 1, .5, 2); renderMotionDock(); return; }
     if (event.target.matches("[data-motion-preview-mode]")) { motionPreviewMode = event.target.value; scrubStudioMotion(motionPlayhead); return; }
     if (event.target.matches('[data-field="page.name"],[data-field="page.slug"],[data-field="page.visibility"]')) { renderPages(); renderInspector(); }
-    if (event.target.matches('[data-field="action.type"],[data-field="playbackMode"],[data-field="embedMode"],[data-field="navMode"],[data-field="fixedAnchor"],[data-field="clipShape"],[data-field="hoverEffect"]')) renderInspector();
+    if (event.target.matches('[data-field="action.type"],[data-field="playbackMode"],[data-field="embedMode"],[data-field="navMode"],[data-field="fixedAnchor"],[data-field="clipShape"],[data-field="hoverEffect"],[data-field="maskPreset"],[data-field="duotone"]')) renderInspector();
     if (event.target.matches('[data-field^="motion.timeline"]')) { selectedMotionFrame(); renderInspector(); renderMotionDock(); scrubStudioMotion(motionPlayhead); }
   });
 
@@ -3722,7 +4127,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       const current = findBlock(block.id);
       if (!current) return;
       if (!result || result.bytes > INLINE_LIMIT) { alert("줄여도 1.5MB보다 커요. 업로드 버튼으로 GitHub media 폴더에 올린 뒤 /media/파일명 경로를 붙여주세요."); return; }
-      if (target === "button") current.backgroundImage = result.dataURL; else { current.src = result.dataURL; current.media = ""; }
+      if (target === "button") current.backgroundImage = result.dataURL; else if (target === "mask") { current.maskImage = result.dataURL; current.maskPreset = "image"; } else { current.src = result.dataURL; current.media = ""; }
       persist(); renderSelection();
       status(result.compressed ? `넣었어요 · ${(result.from / 1_000_000).toFixed(1)}MB → ${(result.bytes / 1000).toFixed(0)}KB WebP` : "넣었어요");
     });
@@ -3742,16 +4147,20 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     setZoom(zoom * Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0025)), { x: event.clientX - rect.left, y: event.clientY - rect.top });
   }, { passive: false });
   workspaceNode?.addEventListener("dragover", (event) => {
-    if (![...(event.dataTransfer?.types || [])].includes("Files")) return;
+    const types = [...(event.dataTransfer?.types || [])];
+    if (!types.includes("Files") && !types.includes("text/x-archive-asset")) return;
     event.preventDefault(); event.dataTransfer.dropEffect = "copy"; workspaceNode.classList.add("is-dropping");
   });
   workspaceNode?.addEventListener("dragleave", (event) => { if (!workspaceNode.contains(event.relatedTarget)) workspaceNode.classList.remove("is-dropping"); });
   workspaceNode?.addEventListener("drop", (event) => {
     workspaceNode.classList.remove("is-dropping");
+    const rect = studio.querySelector(".archive-studio__board")?.getBoundingClientRect();
+    const point = rect ? { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom } : null;
+    const assetURL = event.dataTransfer?.getData("text/x-archive-asset");
+    if (assetURL) { event.preventDefault(); insertAsset(collectAssets().find((item) => item.url === assetURL) || { url: assetURL, kind: mediaKind(assetURL), uses: [] }, point); return; }
     if (!event.dataTransfer?.files?.length) return;
     event.preventDefault();
-    const rect = studio.querySelector(".archive-studio__board")?.getBoundingClientRect();
-    insertFiles(event.dataTransfer.files, rect ? { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom } : null);
+    insertFiles(event.dataTransfer.files, point);
   });
   const handlePaste = (event) => {
     if (/input|textarea|select/i.test(document.activeElement?.tagName || "") || document.activeElement?.isContentEditable) return;
@@ -3761,20 +4170,500 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   };
   addEventListener("paste", handlePaste);
 
+  // ===== Studio 8 (B17): 색 팔레트 — 마지막으로 만진 색 칸에 스와치·스포이트 색을 넣는다 =====
+  let lastColorField = "";
+  studio.addEventListener("focusin", (event) => { if (event.target.matches("[data-color-field]")) lastColorField = event.target.dataset.field; });
+  const applyColorToActiveField = (hex) => {
+    const inspector = studio.querySelector("[data-inspector]");
+    const target = (lastColorField && inspector?.querySelector(`[data-color-field][data-field="${CSS.escape(lastColorField)}"]`)) || inspector?.querySelector("[data-color-field]");
+    if (!target) { status("색을 넣을 칸이 없어요 · 요소를 고르고 모양 패널을 여세요"); return; }
+    target.value = hex;
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+    rememberColor(hex);
+    status(`${hex} → ${target.closest("label")?.querySelector("span")?.textContent || "색"}`);
+  };
+
+  // ===== Studio 8 (B18): 눈금자 · 가이드 · 컬럼 그리드 =====
+  let rulersOn = false; let columnsOn = true;
+  try { rulersOn = localStorage.getItem("psj-studio-rulers") === "1"; columnsOn = localStorage.getItem("psj-studio-columns") !== "0"; } catch (error) { /* ignore */ }
+  const RULER = 20;
+  const center = studio.querySelector(".archive-studio__center");
+  const rulerH = document.createElement("canvas"); rulerH.className = "studio-ruler studio-ruler--h"; rulerH.title = "아래로 끌면 가로 가이드";
+  const rulerV = document.createElement("canvas"); rulerV.className = "studio-ruler studio-ruler--v"; rulerV.title = "오른쪽으로 끌면 세로 가이드";
+  const rulerCorner = document.createElement("button"); rulerCorner.className = "studio-ruler-corner"; rulerCorner.type = "button"; rulerCorner.title = "눈금자 끄기 (Ctrl+R)"; rulerCorner.textContent = "✕";
+  center?.append(rulerH, rulerV, rulerCorner);
+  const rulerStep = () => { const steps = [10, 20, 25, 50, 100, 200, 250, 500, 1000]; return steps.find((step) => step * zoom >= 64) || 1000; };
+  const drawRulers = () => {
+    const board = studio.querySelector(".archive-studio__board");
+    if (!rulersOn || !board || !workspaceNode || !rulerH.isConnected) return;
+    const wsRect = workspaceNode.getBoundingClientRect(); const boardRect = board.getBoundingClientRect();
+    const top = workspaceNode.offsetTop; const left = workspaceNode.offsetLeft;
+    const width = Math.max(10, workspaceNode.clientWidth - RULER); const height = Math.max(10, workspaceNode.clientHeight - RULER);
+    rulerH.style.cssText = `top:${top}px;left:${left + RULER}px;width:${width}px;height:${RULER}px`;
+    rulerV.style.cssText = `top:${top + RULER}px;left:${left}px;width:${RULER}px;height:${height}px`;
+    rulerCorner.style.cssText = `top:${top}px;left:${left}px;width:${RULER}px;height:${RULER}px`;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const step = rulerStep(); const minor = step / 5;
+    const bounds = selectedBlocks().length ? boundsOf(selectedBlocks()) : null;
+    const paint = (canvasNode, size, originScreen, along, vertical) => {
+      canvasNode.width = Math.round((vertical ? RULER : size) * dpr); canvasNode.height = Math.round((vertical ? size : RULER) * dpr);
+      const g = canvasNode.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = "#f4f4f1"; g.fillRect(0, 0, vertical ? RULER : size, vertical ? size : RULER);
+      if (bounds) { g.fillStyle = "rgba(77,92,255,.16)"; const a = originScreen + (vertical ? bounds.top : bounds.left) * zoom; const b = (vertical ? bounds.height : bounds.width) * zoom; if (vertical) g.fillRect(0, a, RULER, b); else g.fillRect(a, 0, b, RULER); }
+      g.strokeStyle = "#a3a39e"; g.fillStyle = "#5a5a55"; g.font = "9px Menlo, Consolas, monospace"; g.textBaseline = "top";
+      const start = Math.floor((-originScreen) / zoom / minor) * minor; const end = (size - originScreen) / zoom;
+      g.beginPath();
+      for (let value = start; value <= end; value += minor) {
+        const pos = Math.round(originScreen + value * zoom) + 0.5; const major = Math.abs(value / step - Math.round(value / step)) < 1e-6;
+        const length = major ? RULER - 5 : value % (step / 2) === 0 ? 7 : 4;
+        if (vertical) { g.moveTo(RULER, pos); g.lineTo(RULER - length, pos); } else { g.moveTo(pos, RULER); g.lineTo(pos, RULER - length); }
+        if (major) { if (vertical) { g.save(); g.translate(3, pos - 2); g.rotate(-Math.PI / 2); g.textAlign = "right"; g.fillText(String(Math.round(value)), 0, 0); g.restore(); } else g.fillText(String(Math.round(value)), pos + 3, 2); }
+      }
+      g.stroke();
+      void along;
+    };
+    paint(rulerH, width, boardRect.left - wsRect.left - RULER, "x", false);
+    paint(rulerV, height, boardRect.top - wsRect.top - RULER, "y", true);
+  };
+  let rulerFrame = 0;
+  const drawRulersSoon = () => { if (rulerFrame) return; rulerFrame = requestAnimationFrame(() => { rulerFrame = 0; drawRulers(); }); };
+  const setRulers = (on, { silent = false } = {}) => {
+    rulersOn = Boolean(on);
+    try { localStorage.setItem("psj-studio-rulers", rulersOn ? "1" : "0"); } catch (error) { /* ignore */ }
+    [rulerH, rulerV, rulerCorner].forEach((node) => { node.hidden = !rulersOn; });
+    studio.querySelectorAll('[data-action="toggle-rulers"]').forEach((button) => button.setAttribute("aria-pressed", String(rulersOn)));
+    workspaceNode?.classList.toggle("has-rulers", rulersOn);
+    canvas()?.classList.toggle("has-guides", rulersOn);
+    if (rulersOn) drawRulers();
+    if (!silent) status(rulersOn ? "눈금자 켜짐 · 눈금자에서 캔버스로 끌어 가이드를 만드세요" : "눈금자 끔 (가이드는 숨겨져요)");
+  };
+  const setColumns = (on, { silent = false } = {}) => {
+    columnsOn = Boolean(on);
+    try { localStorage.setItem("psj-studio-columns", columnsOn ? "1" : "0"); } catch (error) { /* ignore */ }
+    studio.querySelectorAll('[data-action="toggle-columns"]').forEach((button) => button.setAttribute("aria-pressed", String(columnsOn)));
+    renderColumns();
+    if (!silent) status(columnsOn ? (currentPage().canvas.columns ? "컬럼 그리드 보임" : "컬럼 그리드 보임 · 페이지 설정에서 컬럼 수를 정하세요") : "컬럼 그리드 숨김");
+  };
+  const columnEdges = (page = currentPage()) => {
+    const box = layoutBox(page, activeLayout()); const count = page.canvas.columns;
+    if (!count || !columnsOn) return [];
+    const inner = box.width - page.canvas.columnMargin * 2; const width = (inner - page.canvas.columnGap * (count - 1)) / count;
+    if (width <= 0) return [];
+    const edges = [];
+    for (let index = 0; index < count; index += 1) { const left = page.canvas.columnMargin + index * (width + page.canvas.columnGap); edges.push(left, left + width); }
+    return edges;
+  };
+  const renderColumns = () => {
+    const board = canvas(); if (!board) return;
+    board.querySelector(".studio-columns")?.remove();
+    const page = currentPage(); const edges = columnEdges(page);
+    if (!edges.length) return;
+    const box = layoutBox(page, activeLayout());
+    const overlay = document.createElement("div"); overlay.className = "studio-columns"; overlay.style.height = `${box.height}px`;
+    for (let index = 0; index < edges.length; index += 2) { const column = document.createElement("i"); column.style.cssText = `left:${edges[index]}px;width:${edges[index + 1] - edges[index]}px`; overlay.append(column); }
+    board.prepend(overlay);
+  };
+  const renderPageGuides = () => {
+    const board = canvas(); if (!board) return;
+    board.querySelectorAll(".studio-page-guide").forEach((node) => node.remove());
+    board.classList.toggle("has-guides", rulersOn);
+    const page = currentPage(); const box = layoutBox(page, activeLayout());
+    const make = (axis, value, index) => {
+      const node = document.createElement("div");
+      node.className = `studio-page-guide studio-page-guide--${axis}`; node.dataset.guideAxis = axis; node.dataset.guideIndex = String(index);
+      node.style.cssText = axis === "v" ? `left:${value}px;height:${box.height}px` : `top:${value}px;width:${box.width}px`;
+      node.innerHTML = `<span>${Math.round(value)}</span>`; node.title = "끌어서 옮기기 · 더블클릭으로 지우기";
+      board.append(node);
+    };
+    page.guides.v.forEach((value, index) => make("v", value, index));
+    page.guides.h.forEach((value, index) => make("h", value, index));
+  };
+  // 눈금자에서 끌어내기(새 가이드) · 기존 가이드 끌기(이동)
+  let guideDrag = null;
+  const guideValueFrom = (event, axis) => {
+    const rect = studio.querySelector(".archive-studio__board")?.getBoundingClientRect(); if (!rect) return 0;
+    const raw = axis === "v" ? (event.clientX - rect.left) / zoom : (event.clientY - rect.top) / zoom;
+    return Math.round(event.altKey ? raw : gridSnap(raw));
+  };
+  const startGuideDrag = (event, axis, index = -1) => {
+    event.preventDefault();
+    guideDrag = { axis, index, pointerId: event.pointerId, value: index >= 0 ? currentPage().guides[axis][index] : guideValueFrom(event, axis), moved: false };
+    const board = canvas(); if (!board) return;
+    let ghost = index >= 0 ? board.querySelector(`.studio-page-guide[data-guide-axis="${axis}"][data-guide-index="${index}"]`) : null;
+    if (!ghost) { ghost = document.createElement("div"); ghost.className = `studio-page-guide studio-page-guide--${axis} is-new`; ghost.innerHTML = "<span></span>"; board.append(ghost); }
+    ghost.classList.add("is-dragging"); guideDrag.ghost = ghost;
+    const box = layoutBox(currentPage(), activeLayout());
+    const place = (value) => { ghost.style.cssText = axis === "v" ? `left:${value}px;height:${box.height}px` : `top:${value}px;width:${box.width}px`; ghost.querySelector("span").textContent = String(value); };
+    place(guideDrag.value);
+    const move = (moveEvent) => { if (moveEvent.pointerId !== guideDrag.pointerId) return; guideDrag.moved = true; guideDrag.value = guideValueFrom(moveEvent, axis); place(guideDrag.value); status(`가이드 ${axis === "v" ? "X" : "Y"} ${guideDrag.value}`, { quiet: true }); };
+    const up = (upEvent) => {
+      if (upEvent.pointerId !== guideDrag.pointerId) return;
+      removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
+      const page = currentPage(); const list = page.guides[axis]; const wsRect = workspaceNode.getBoundingClientRect();
+      const inside = upEvent.clientX >= wsRect.left + RULER && upEvent.clientY >= wsRect.top + RULER && upEvent.clientX <= wsRect.right && upEvent.clientY <= wsRect.bottom;
+      const limit = axis === "v" ? box.width : box.height;
+      if (index >= 0) { if (!inside || guideDrag.value < -10 || guideDrag.value > limit + 10) list.splice(index, 1); else list[index] = guideDrag.value; }
+      else if (inside && guideDrag.value >= 0 && guideDrag.value <= limit) list.push(guideDrag.value);
+      page.guides = normalizeGuides(page.guides);
+      guideDrag = null; persist(); renderPageGuides(); renderInspector();
+      status(index >= 0 && !inside ? "가이드를 지웠어요" : "가이드 저장됨 · 요소가 이 선에 붙어요", { quiet: false });
+    };
+    addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+  };
+  rulerH.addEventListener("pointerdown", (event) => { if (event.button === 0) startGuideDrag(event, "h"); });
+  rulerV.addEventListener("pointerdown", (event) => { if (event.button === 0) startGuideDrag(event, "v"); });
+  rulerCorner.addEventListener("click", () => setRulers(false));
+  studio.addEventListener("pointerdown", (event) => {
+    const guide = event.target.closest(".studio-page-guide");
+    if (!guide || event.button !== 0 || !rulersOn) return;
+    event.stopPropagation(); startGuideDrag(event, guide.dataset.guideAxis, Number(guide.dataset.guideIndex));
+  }, true);
+  studio.addEventListener("dblclick", (event) => {
+    const guide = event.target.closest(".studio-page-guide");
+    if (!guide) return;
+    event.preventDefault(); event.stopPropagation();
+    const page = currentPage(); page.guides[guide.dataset.guideAxis].splice(Number(guide.dataset.guideIndex), 1);
+    persist(); renderPageGuides(); renderInspector(); status("가이드를 지웠어요");
+  }, true);
+  workspaceNode?.addEventListener("scroll", drawRulersSoon, { passive: true });
+  addEventListener("resize", drawRulersSoon);
+  setRulers(rulersOn, { silent: true }); setColumns(columnsOn, { silent: true });
+
+  // Studio 8 (B6): 끄는 동안 가장 가까운 이웃까지의 거리 — 좌우·상하 한 개씩
+  const nearestGaps = (box, excludeIds = []) => {
+    const others = allBlocks().filter((block) => !excludeIds.includes(block.id) && block.visible).map((block) => view(block)).filter((rect) => !rect.hidden);
+    const gaps = [];
+    const overlapY = (rect) => Math.min(rect.y + rect.height, box.bottom) - Math.max(rect.y, box.top);
+    const overlapX = (rect) => Math.min(rect.x + rect.width, box.right) - Math.max(rect.x, box.left);
+    let left = null; let right = null; let up = null; let down = null;
+    others.forEach((rect) => {
+      if (overlapY(rect) > 0) {
+        if (rect.x + rect.width <= box.left && (!left || rect.x + rect.width > left.x + left.width)) left = rect;
+        if (rect.x >= box.right && (!right || rect.x < right.x)) right = rect;
+      }
+      if (overlapX(rect) > 0) {
+        if (rect.y + rect.height <= box.top && (!up || rect.y + rect.height > up.y + up.height)) up = rect;
+        if (rect.y >= box.bottom && (!down || rect.y < down.y)) down = rect;
+      }
+    });
+    const mid = (a, b) => (Math.max(a[0], b[0]) + Math.min(a[1], b[1])) / 2;
+    if (left && box.left - (left.x + left.width) <= 600) gaps.push({ axis: "x", from: left.x + left.width, to: box.left, at: mid([left.y, left.y + left.height], [box.top, box.bottom]) });
+    if (right && right.x - box.right <= 600) gaps.push({ axis: "x", from: box.right, to: right.x, at: mid([right.y, right.y + right.height], [box.top, box.bottom]) });
+    if (up && box.top - (up.y + up.height) <= 600) gaps.push({ axis: "y", from: up.y + up.height, to: box.top, at: mid([up.x, up.x + up.width], [box.left, box.right]) });
+    if (down && down.y - box.bottom <= 600) gaps.push({ axis: "y", from: box.bottom, to: down.y, at: mid([down.x, down.x + down.width], [box.left, box.right]) });
+    return gaps.filter((gap) => gap.to - gap.from >= 1);
+  };
+
+  // ===== Studio 8 (B15): 자산 패널 — 사이트에서 쓰는 이미지·영상·오디오를 한눈에 =====
+  let assetsKey = "";
+  const mediaKind = (url) => /^data:video/.test(url) || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) ? "video" : /^data:audio/.test(url) || /\.(mp3|wav|ogg|m4a|aac)(\?|$)/i.test(url) ? "audio" : "image";
+  const collectAssets = () => {
+    const map = new Map();
+    const add = (url, use) => { const key = String(url || "").trim(); if (!key) return; if (!map.has(key)) map.set(key, { url: key, kind: mediaKind(key), uses: [] }); map.get(key).uses.push(use); };
+    const scanBlock = (block, pageId) => {
+      const use = (field) => ({ pageId, blockId: block.id, field, name: block.name });
+      ["src", "media", "poster", "backgroundImage", "hoverSrc", "captions"].forEach((field) => { if (block[field]) add(block[field], use(field)); });
+      (block.galleryItems || []).forEach((item, index) => { if (item.src) add(item.src, use(`galleryItems.${index}.src`)); });
+      if (block.type === "component") {
+        const meta = componentMetas.get(block.component);
+        (meta?.props || []).forEach((prop) => {
+          const value = block.props?.[prop.key];
+          if (prop.type === "image" && value) add(value, use(`props.${prop.key}`));
+          if (prop.type === "images" && Array.isArray(value)) value.forEach((entry, index) => add(String(entry).split("|")[0].trim(), use(`props.${prop.key}.${index}`)));
+        });
+      }
+    };
+    data.pages.forEach((page) => {
+      page.blocks.forEach((block) => scanBlock(block, page.id));
+      if (page.canvas.backgroundImage) add(page.canvas.backgroundImage, { pageId: page.id, field: "canvas.backgroundImage", name: `${page.name} 배경` });
+      if (page.canvas.backgroundVideo) add(page.canvas.backgroundVideo, { pageId: page.id, field: "canvas.backgroundVideo", name: `${page.name} 배경 영상` });
+      if (page.seo.image) add(page.seo.image, { pageId: page.id, field: "seo.image", name: `${page.name} 공유 이미지` });
+    });
+    data.globals.forEach((block) => scanBlock(block, ""));
+    return [...map.values()];
+  };
+  const assetLabel = (url) => url.startsWith("data:") ? `내장 파일 ${Math.max(1, Math.round(url.length * 3 / 4 / 1024))}KB` : (url.replace(/^https?:\/\/[^/]+/, "").split("?")[0].split("/").pop() || url).slice(0, 34);
+  const renderAssets = () => {
+    const list = studio.querySelector("[data-asset-list]"); const count = studio.querySelector("[data-asset-count]");
+    if (!list) return;
+    const assets = collectAssets();
+    const key = assets.map((asset) => `${asset.url.slice(0, 80)}:${asset.uses.length}`).join("|");
+    if (count) count.textContent = assets.length ? `${assets.length}개` : "";
+    if (key === assetsKey) return;
+    assetsKey = key;
+    list._assets = assets;
+    list.innerHTML = assets.length ? assets.map((asset, index) => `<div class="studio-asset" draggable="true" data-asset-index="${index}" data-asset-url="${escapeHTML(asset.url)}" title="${escapeHTML(asset.url.slice(0, 200))}">${asset.kind === "image" ? `<img src="${escapeHTML(safeURL(asset.url, { imageData: true }) || "")}" alt="" loading="lazy">` : `<i>${asset.kind === "video" ? "▶" : "♪"}</i>`}<div><strong>${escapeHTML(assetLabel(asset.url))}</strong><small>${asset.kind} · ${asset.uses.length}곳${asset.url.startsWith("/media/") ? " · media" : asset.url.startsWith("data:") ? " · 내장" : ""}</small></div><span><button data-asset-select="${index}" type="button" title="쓰는 요소 선택">선택</button><button data-asset-insert="${index}" type="button" title="캔버스에 새로 넣기">＋</button><button data-asset-replace="${index}" type="button" title="쓰는 모든 곳에서 바꾸기">교체</button></span></div>`).join("") + '<p class="studio-help">줄을 캔버스로 끌어다 놓으면 그 자리에 새 요소가 생겨요.</p>' : '<p class="studio-muted">아직 사용한 이미지·영상이 없어요. 파일을 캔버스에 끌어다 놓으면 여기에 모여요.</p>';
+  };
+  const assetAt = (index) => studio.querySelector("[data-asset-list]")?._assets?.[Number(index)] || null;
+  const selectAssetUse = (asset) => {
+    const use = asset.uses.find((item) => item.blockId) || asset.uses[0];
+    if (!use) return;
+    if (use.pageId && use.pageId !== activePageId) { activePageId = use.pageId; layout = "desktop"; }
+    if (use.blockId) { selectedId = use.blockId; selectedIds = [use.blockId]; } else { selectedId = ""; selectedIds = []; }
+    renderSelection({ pages: true });
+    const node = canvas()?.querySelector(`[data-block-id="${CSS.escape(use.blockId || "")}"]`);
+    node?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    status(`${use.name}${use.blockId ? "" : " (페이지 설정)"}${asset.uses.length > 1 ? ` · ${asset.uses.length}곳에서 사용` : ""}`);
+  };
+  const replaceAsset = (asset, next) => {
+    const value = String(next || "").trim();
+    if (!value || value === asset.url) return;
+    let changed = 0;
+    const swap = (object, key) => { if (object && object[key] === asset.url) { object[key] = value; changed += 1; } };
+    const scan = (block) => {
+      ["src", "media", "poster", "backgroundImage", "hoverSrc", "captions"].forEach((field) => swap(block, field));
+      (block.galleryItems || []).forEach((item) => swap(item, "src"));
+      if (block.type === "component" && block.props) Object.keys(block.props).forEach((key) => {
+        if (block.props[key] === asset.url) { block.props[key] = value; changed += 1; }
+        else if (Array.isArray(block.props[key])) block.props[key] = block.props[key].map((entry) => { const [first, ...rest] = String(entry).split("|"); if (first.trim() === asset.url) { changed += 1; return [value, ...rest].join("|"); } return entry; });
+      });
+    };
+    data.pages.forEach((page) => { page.blocks.forEach(scan); swap(page.canvas, "backgroundImage"); swap(page.canvas, "backgroundVideo"); swap(page.seo, "image"); });
+    data.globals.forEach(scan);
+    persist(); renderSelection(); status(`${changed}곳을 바꿨어요`);
+  };
+  const insertAsset = (asset, point = null) => {
+    const page = currentPage(); const box = layoutBox(page, activeLayout());
+    const block = defaultBlock(asset.kind, page);
+    block.name = assetLabel(asset.url).replace(/\.[^.]+$/, "").slice(0, 40) || block.name;
+    if (asset.url.startsWith("/media/")) block.media = asset.url; else block.src = asset.url;
+    const width = asset.kind === "audio" ? 420 : Math.min(480, box.width - 40); const height = asset.kind === "audio" ? 64 : 320;
+    block.width = width; block.height = height;
+    if (point && activeLayout() === "desktop") { block.x = Math.round(Math.min(Math.max(0, point.x - width / 2), Math.max(0, box.width - width))); block.y = Math.round(Math.max(0, point.y - height / 2)); }
+    addBlock(block);
+  };
+  studio.addEventListener("dragstart", (event) => { const row = event.target.closest("[data-asset-url]"); if (!row) return; event.dataTransfer.setData("text/x-archive-asset", row.dataset.assetUrl); event.dataTransfer.effectAllowed = "copy"; });
+
+  // ===== Studio 8 (B16): 섹션·페이지 템플릿 =====
+  const nextSectionY = (page = currentPage()) => {
+    const bottoms = page.blocks.filter((block) => !block.fixed).map((block) => block.y + block.height);
+    return bottoms.length ? Math.max(...bottoms) + 80 : Math.max(0, Math.round((workspaceNode?.scrollTop || 0) / zoom));
+  };
+  const materializeSpec = (spec, page, zBase, index) => {
+    const base = { ...spec };
+    if (base.type === "component") base.props = resolveProps(componentMetas.get(base.component) || { props: [] }, base.props || {});
+    const block = normalizeBlock({ ...base, id: uid(base.type), z: zBase + index + 1 }, page.blocks.length + index);
+    if (base.action) block.action = normalizeAction(base.action, block);
+    placeNewBlockOnLayouts(block, page);
+    return block;
+  };
+  const insertSection = (id, { page = currentPage(), y = null, select = true } = {}) => {
+    const template = sectionTemplate(id);
+    if (!template) return null;
+    const startY = y == null ? nextSectionY(page) : y;
+    const built = template.build({ width: page.canvas.width, y: startY });
+    const zBase = Math.max(0, ...page.blocks.map((block) => block.z), ...data.globals.map((block) => block.z));
+    const blocks = built.blocks.map((spec, index) => materializeSpec(spec, page, zBase, index));
+    page.blocks.push(...blocks);
+    if (startY + built.height + 80 > page.canvas.height) page.canvas.height = startY + built.height + 80;
+    if (select) setSelection(blocks.map((block) => block.id));
+    return { blocks, height: built.height };
+  };
+  const createPageFromTemplate = (templateId) => {
+    const template = PAGE_TEMPLATES.find((item) => item.id === templateId);
+    if (!template) return;
+    const usedSlugs = new Set(data.pages.map((page) => page.slug));
+    let slug = template.id; let suffix = 2;
+    while (usedSlugs.has(slug)) slug = `${template.id}-${suffix++}`;
+    const page = normalizePage({ id: uid("page"), name: template.name, slug, visibility: "listed", canvas: { ...clone(currentPage().canvas), height: 1800, columns: 0, backgroundImage: "", backgroundVideo: "", backgroundEffect: "none" } }, data.pages.length);
+    data.pages.push(page); activePageId = page.id; layout = "desktop";
+    let y = 0;
+    template.sections.forEach((id) => { const result = insertSection(id, { page, y, select: false }); if (result) y += result.height; });
+    page.canvas.height = Math.max(900, y + 80);
+    selectedId = ""; selectedIds = [];
+    persist(); fitZoom(); renderSelection({ pages: true });
+    workspaceNode?.scrollTo({ top: 0 });
+    status(`${template.name} 페이지를 만들었어요 · 글과 사진 자리를 바꾸세요`);
+  };
+  const sketchMarkup = (id) => `<i class="studio-template-sketch">${sectionSketch(id).map((rect) => `<b class="is-${rect.kind}" style="left:${rect.left}%;top:${rect.top}%;width:${Math.max(1, rect.width)}%;height:${Math.max(2.5, rect.height)}%"></b>`).join("")}</i>`;
+  const openTemplates = (tab = "sections") => {
+    finishTextEdit(); closeContextMenu();
+    const categories = [...new Set(SECTION_TEMPLATES.map((item) => item.category))];
+    const sections = categories.map((category) => `<h4>${escapeHTML(category)}</h4><div class="studio-template-grid">${SECTION_TEMPLATES.filter((item) => item.category === category).map((item) => `<button data-template-section="${item.id}" type="button">${sketchMarkup(item.id)}<strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.description)}</small></button>`).join("")}</div>`).join("");
+    const pages = `<div class="studio-template-grid studio-template-grid--pages">${PAGE_TEMPLATES.map((item) => `<button data-template-page="${item.id}" type="button"><i class="studio-template-sketch studio-template-sketch--page">${item.sections.map((id) => `<em>${escapeHTML(sectionTemplate(id)?.name || id)}</em>`).join("")}</i><strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.description)}</small></button>`).join("")}</div><p class="studio-help">새 페이지가 만들어지고 메뉴에 표시돼요. 이름·URL은 페이지 설정에서 바꾸세요.</p>`;
+    const modal = openModal({ title: "템플릿", subtitle: "섹션은 현재 페이지 맨 아래에 들어가고, 페이지 템플릿은 새 페이지를 만들어요", wide: true, body: `<div class="studio-template-tabs" role="tablist"><button data-template-tab="sections" class="${tab === "sections" ? "is-active" : ""}" type="button">섹션 ${SECTION_TEMPLATES.length}</button><button data-template-tab="pages" class="${tab === "pages" ? "is-active" : ""}" type="button">페이지 ${PAGE_TEMPLATES.length}</button></div><div data-template-panel="sections" ${tab === "sections" ? "" : "hidden"}>${sections}</div><div data-template-panel="pages" ${tab === "pages" ? "" : "hidden"}>${pages}</div>` });
+    modal.addEventListener("click", (event) => {
+      const tabButton = event.target.closest("[data-template-tab]");
+      if (tabButton) { modal.querySelectorAll("[data-template-tab]").forEach((button) => button.classList.toggle("is-active", button === tabButton)); modal.querySelectorAll("[data-template-panel]").forEach((panel) => { panel.hidden = panel.dataset.templatePanel !== tabButton.dataset.templateTab; }); return; }
+      const section = event.target.closest("[data-template-section]");
+      if (section) {
+        const result = insertSection(section.dataset.templateSection);
+        modal.close(); persist(); renderSelection();
+        const top = result?.blocks[0]?.y || 0; workspaceNode?.scrollTo({ top: Math.max(0, top * zoom - 40), behavior: "smooth" });
+        status(`${sectionTemplate(section.dataset.templateSection)?.name} 섹션 추가 · 글과 사진을 바꾸세요`); return;
+      }
+      const pageButton = event.target.closest("[data-template-page]");
+      if (pageButton) { modal.close(); createPageFromTemplate(pageButton.dataset.templatePage); }
+    });
+  };
+
+  // ===== Studio 8 (B13): 체크포인트 =====
+  const quickCheckpoint = async (name = "", auto = false) => {
+    try { const row = await saveCheckpoint({ name, data, auto }); status(`체크포인트 저장 · ${row.name}${row.storage === "localstorage" ? " (임시 저장소)" : ""}`); return row; }
+    catch (error) { status(error.message || "체크포인트 저장 실패"); return null; }
+  };
+  const openCheckpoints = async () => {
+    closeContextMenu();
+    const rows = await listCheckpoints();
+    const total = rows.reduce((sum, row) => sum + (row.size || 0), 0);
+    const modal = openModal({ title: "체크포인트", subtitle: `저장 지점 ${rows.length}개 · ${formatBytes(total)} · 이 브라우저에만 보관돼요`, wide: true, body: `
+      <form class="studio-checkpoint-form" data-checkpoint-form><input type="text" name="name" placeholder="이름 (예: 홈 1차 완성)" maxlength="60" autocomplete="off"><button class="studio-button is-primary" type="submit">지금 상태 저장</button></form>
+      <div class="studio-checkpoint-list">${rows.length ? rows.map((row) => `<div class="studio-checkpoint" data-checkpoint="${row.id}"><div><strong>${escapeHTML(row.name)}</strong><small>${formatWhen(row.savedAt)} · 페이지 ${row.pages} · 요소 ${row.blocks} · ${formatBytes(row.size || 0)}${row.auto ? " · 자동" : ""}</small></div><span><button data-checkpoint-restore="${row.id}" type="button">복원</button><button data-checkpoint-download="${row.id}" type="button">JSON</button><button data-checkpoint-delete="${row.id}" type="button">삭제</button></span></div>`).join("") : '<p class="studio-muted">아직 체크포인트가 없어요. 큰 변경 전에 하나 남겨 두세요 (Ctrl+Shift+S).</p>'}</div>
+      <p class="studio-help">복원하면 지금 상태가 ‘복원 전 자동’으로 먼저 저장돼요. 브라우저 데이터를 지우면 함께 사라지니 중요한 버전은 JSON으로도 내려받아 두세요. 최대 30개를 보관해요.</p>` });
+    modal.querySelector("[data-checkpoint-form]")?.addEventListener("submit", async (event) => { event.preventDefault(); await quickCheckpoint(String(new FormData(event.target).get("name") || "")); openCheckpoints(); });
+    modal.addEventListener("click", async (event) => {
+      const restore = event.target.closest("[data-checkpoint-restore]");
+      if (restore) {
+        const snapshot = await loadCheckpoint(restore.dataset.checkpointRestore);
+        if (!snapshot) { status("체크포인트를 읽지 못했어요"); return; }
+        if (!confirm("이 체크포인트로 되돌릴까요? 지금 상태는 ‘복원 전 자동’으로 먼저 저장돼요.")) return;
+        await quickCheckpoint("복원 전 자동", true);
+        data = normalizeArchiveData(snapshot);
+        activePageId = data.pages.some((page) => page.id === activePageId) ? activePageId : data.settings.defaultPageId;
+        selectedId = ""; selectedIds = []; layout = "desktop";
+        persist(); fitZoom(); renderSelection({ pages: true }); modal.close(); status("체크포인트로 되돌렸어요"); return;
+      }
+      const download = event.target.closest("[data-checkpoint-download]");
+      if (download) {
+        const snapshot = await loadCheckpoint(download.dataset.checkpointDownload);
+        if (!snapshot) return;
+        const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `archive-checkpoint-${download.dataset.checkpointDownload}.json`; link.click(); URL.revokeObjectURL(link.href); return;
+      }
+      const remove = event.target.closest("[data-checkpoint-delete]");
+      if (remove) { await deleteCheckpoint(remove.dataset.checkpointDelete); openCheckpoints(); }
+    });
+  };
+
+  // ===== Studio 8 (B12): GitHub 원클릭 게시 · 미디어 업로드 =====
+  const GITHUB_DEFAULTS = parseRepoFromEditURL(GITHUB_EDIT_URL) || { owner: "", repo: "", branch: "main", path: "content/archive.json" };
+  const githubConfig = () => ({ ...getRepoConfig(GITHUB_DEFAULTS), path: GITHUB_DEFAULTS.path });
+  const githubToken = () => getToken();
+  const publishByCopy = () => { studio.querySelector('[data-action="publish-copy"]')?.click(); };
+  const markPublished = () => { published = clone(data); draftBase = fingerprint(published); draftConflict = false; saveDraft(data, published, draftBase); };
+  const uploadFilesToGitHub = async (files, listNode = null) => {
+    const config = githubConfig(); const token = githubToken();
+    if (!token) { status("GitHub 토큰이 없어서 자동 업로드를 못 해요 · 게시 창(Ctrl+Shift+P)에서 토큰을 넣으세요"); return []; }
+    const results = [];
+    for (const file of files) {
+      const row = listNode ? document.createElement("li") : null;
+      if (row) { row.textContent = `${file.name} · 준비 중…`; listNode.append(row); }
+      try {
+        const result = await uploadMedia({ config, token, file, onProgress: (step) => { const label = step === "encoding" ? "읽는 중" : "GitHub에 올리는 중"; if (row) row.textContent = `${file.name} · ${label}…`; status(`${file.name} ${label}…`, { quiet: true }); } });
+        results.push(result);
+        if (row) row.innerHTML = `<code>${escapeHTML(result.path)}</code> <button data-copy-path="${escapeHTML(result.path)}" type="button">경로 복사</button>${result.replaced ? " <small>(덮어씀)</small>" : ""}`;
+        status(`${file.name} 업로드 완료 → ${result.path}`);
+      } catch (error) { if (row) row.textContent = `${file.name} · 실패: ${error.message}`; status(`${file.name} 업로드 실패 · ${error.message}`); }
+    }
+    return results;
+  };
+  const sitemapXML = () => {
+    const base = String(data.settings.siteURL || "").trim();
+    if (!base) return "";
+    const root = base.endsWith("/") ? base : `${base}/`;
+    const pages = data.pages.filter((page) => page.visibility === "listed" && !page.seo.noIndex);
+    const urls = [root, ...pages.map((page) => page.id === data.settings.defaultPageId && data.settings.homeView === "archive" ? `${root}?view=archive` : `${root}?view=archive&page=${encodeURIComponent(page.slug)}`)];
+    const today = new Date().toISOString().slice(0, 10);
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${[...new Set(urls)].map((url) => `  <url><loc>${url.replace(/&/g, "&amp;")}</loc><lastmod>${today}</lastmod></url>`).join("\n")}\n</urlset>\n`;
+  };
+  const openPublish = () => {
+    finishTextEdit(); closeContextMenu();
+    const config = githubConfig(); const token = githubToken();
+    const warnings = runPreflight(data);
+    const modal = openModal({ title: "게시", subtitle: "GitHub에 커밋되면 1~2분 뒤 공개 사이트가 바뀌어요", wide: true, body: `
+      <section class="studio-publish-section">
+        <h4>1 · GitHub로 바로 게시</h4>
+        <div class="studio-fields studio-fields--three"><label><span>소유자</span><input data-gh="owner" type="text" value="${escapeHTML(config.owner)}"></label><label><span>저장소</span><input data-gh="repo" type="text" value="${escapeHTML(config.repo)}"></label><label><span>브랜치</span><input data-gh="branch" type="text" value="${escapeHTML(config.branch)}"></label></div>
+        <label><span>토큰 — 이 브라우저에만 저장 · fine-grained, 이 저장소만, Contents 읽기·쓰기</span><input data-gh="token" type="password" value="${escapeHTML(token)}" placeholder="github_pat_…" autocomplete="off"></label>
+        <div class="studio-modal__actions studio-modal__actions--left"><button data-gh-check type="button">연결 확인</button><button data-gh-forget type="button" ${token ? "" : "disabled"}>토큰 지우기</button><a class="studio-link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">토큰 만들기 ↗</a></div>
+        <p class="studio-publish-status" data-gh-status>${token ? "토큰이 저장돼 있어요. ‘연결 확인’으로 권한을 보고 게시하세요." : "토큰을 붙여넣으면 버튼 하나로 게시돼요. 없으면 아래 2번 방식을 쓰세요."}</p>
+        <p class="studio-help">검수: ${warnings.length ? `확인할 항목 ${warnings.length}개 (상단 ‘검수’ 버튼)` : "문제 없음"} · 게시 전에 ‘게시 전 자동’ 체크포인트가 저장돼요.</p>
+        <div class="studio-modal__actions"><button class="is-primary" data-gh-publish type="button" ${token ? "" : "disabled"}>지금 게시</button></div>
+      </section>
+      <section class="studio-publish-section">
+        <h4>2 · 직접 올리기 (토큰 없이)</h4>
+        <p class="studio-help">JSON을 복사하고 GitHub 편집 화면을 열어요. 전체 선택 → 붙여넣기 → Commit changes.</p>
+        <div class="studio-modal__actions studio-modal__actions--left"><button data-gh-copy type="button">JSON 복사하고 GitHub 열기</button><button data-gh-media-page type="button">미디어 업로드 페이지 열기 ↗</button><button data-gh-sitemap type="button" title="공개 주소를 사이트 설정에 넣어야 해요">sitemap.xml 내려받기</button></div>
+      </section>
+      <section class="studio-publish-section">
+        <h4>3 · 미디어 파일 올리기 (토큰 필요 · 파일당 최대 25MB)</h4>
+        <p class="studio-help">올린 파일은 <code>/media/파일명</code>으로 바로 쓸 수 있어요. 토큰이 있으면 큰 파일을 캔버스에 끌어다 놓을 때도 자동으로 올라가요.</p>
+        <input data-gh-files type="file" multiple accept="image/*,video/*,audio/*" ${token ? "" : "disabled"}>
+        <ul class="studio-upload-list" data-gh-uploads></ul>
+      </section>` });
+    const read = (key) => modal.querySelector(`[data-gh="${key}"]`)?.value.trim() || "";
+    const statusLine = modal.querySelector("[data-gh-status]");
+    const say = (message, kind = "") => { statusLine.textContent = message; statusLine.dataset.kind = kind; };
+    const currentConfig = () => { const next = { owner: read("owner") || GITHUB_DEFAULTS.owner, repo: read("repo") || GITHUB_DEFAULTS.repo, branch: read("branch") || "main" }; setRepoConfig(next); return { ...next, path: GITHUB_DEFAULTS.path }; };
+    const syncToken = () => { setToken(read("token")); const has = Boolean(read("token")); modal.querySelector("[data-gh-publish]").disabled = !has; modal.querySelector("[data-gh-forget]").disabled = !has; modal.querySelector("[data-gh-files]").disabled = !has; };
+    modal.querySelector('[data-gh="token"]').addEventListener("input", syncToken);
+    modal.addEventListener("click", async (event) => {
+      const copyPath = event.target.closest("[data-copy-path]");
+      if (copyPath) { try { await navigator.clipboard.writeText(copyPath.dataset.copyPath); status(`${copyPath.dataset.copyPath} 복사됨`); } catch (error) { status("복사하지 못했어요"); } return; }
+      if (event.target.closest("[data-gh-forget]")) { setToken(""); modal.querySelector('[data-gh="token"]').value = ""; syncToken(); say("토큰을 지웠어요."); return; }
+      if (event.target.closest("[data-gh-copy]")) { modal.close(); publishByCopy(); return; }
+      if (event.target.closest("[data-gh-media-page]")) { window.open(GITHUB_MEDIA_UPLOAD_URL, "_blank", "noopener"); return; }
+      if (event.target.closest("[data-gh-sitemap]")) {
+        const xml = sitemapXML();
+        if (!xml) { say("사이트 설정의 ‘공개 주소’를 먼저 넣으세요.", "error"); return; }
+        const blob = new Blob([xml], { type: "application/xml" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "sitemap.xml"; link.click(); URL.revokeObjectURL(link.href);
+        say("sitemap.xml을 내려받았어요. 저장소 맨 위(루트)에 올리세요. 토큰이 있으면 ‘지금 게시’ 때 자동으로 함께 올라가요.", "ok"); return;
+      }
+      if (event.target.closest("[data-gh-check]")) {
+        syncToken(); const current = currentConfig(); const key = read("token");
+        if (!key) { say("토큰을 먼저 붙여넣으세요.", "error"); return; }
+        say("확인 중…");
+        try {
+          const info = await checkConnection({ ...current, token: key });
+          say(`${info.login}(으)로 연결됨 · ${current.owner}/${current.repo}${info.isPrivate ? " (비공개)" : ""} · ${info.canPush ? "쓰기 가능" : "쓰기 권한 없음!"}${info.branchOk ? "" : ` · 브랜치 ${current.branch} 없음 (기본 ${info.defaultBranch})`}`, info.canPush && info.branchOk ? "ok" : "error");
+        } catch (error) { say(error.message, "error"); }
+        return;
+      }
+      if (event.target.closest("[data-gh-publish]")) {
+        syncToken(); const current = currentConfig(); const key = read("token");
+        if (!key) { say("토큰을 먼저 붙여넣으세요.", "error"); return; }
+        const button = event.target.closest("[data-gh-publish]"); button.disabled = true;
+        try {
+          say("게시 전 체크포인트 저장 중…"); await quickCheckpoint("게시 전 자동", true);
+          say("GitHub에 커밋하는 중…");
+          const result = await publishArchive({ config: current, token: key, json: JSON.stringify(normalizeArchiveData(data), null, 2), message: `Publish archive.json from Archive Studio (${new Date().toLocaleString("ko-KR")})` });
+          markPublished();
+          const xml = sitemapXML();
+          if (xml) { try { const existing = await fetchFileMeta({ ...current, path: "sitemap.xml", token: key }); await putFile({ ...current, path: "sitemap.xml", token: key, message: "Update sitemap.xml (Archive Studio)", content: encodeText(xml), sha: existing?.sha || "" }); } catch (error) { console.warn("sitemap upload skipped", error); } }
+          say(`게시 완료! 커밋 ${result.commitSha.slice(0, 7)} · 1~2분 뒤 사이트에 반영돼요. `, "ok");
+          if (result.commitURL) statusLine.insertAdjacentHTML("beforeend", `<a class="studio-link" href="${escapeHTML(result.commitURL)}" target="_blank" rel="noopener">커밋 보기 ↗</a>`);
+          status("GitHub에 게시했어요 · 반영까지 1~2분");
+        } catch (error) { say(error.message, "error"); }
+        button.disabled = false;
+      }
+    });
+    modal.querySelector("[data-gh-files]")?.addEventListener("change", async (event) => {
+      const files = [...event.target.files]; event.target.value = "";
+      if (files.length) await uploadFilesToGitHub(files, modal.querySelector("[data-gh-uploads]"));
+    });
+  };
+
   // ===== Studio 7: 스마트 가이드 · 러버밴드 · 핸들 8개 · 회전 · 묶음 이동 =====
   const GUIDE_THRESHOLD = 6; // 화면 px 기준. 캔버스 px로는 ÷zoom.
   let marquee = null; // 빈 곳 드래그 선택
   let suppressCanvasClick = 0; // 마지막 러버밴드가 끝난 시각(performance.now)
   const clearGuides = () => canvas()?.querySelectorAll(".studio-guide").forEach((node) => node.remove());
-  const drawGuides = (guides) => {
+  const drawGuides = (guides, distances = []) => {
     clearGuides();
     const board = canvas();
-    if (!board || !guides.length) return;
+    if (!board || (!guides.length && !distances.length)) return;
     const box = layoutBox(currentPage(), activeLayout());
     guides.forEach((guide) => {
       const node = document.createElement("div");
       node.className = `studio-guide studio-guide--${guide.axis === "x" ? "v" : "h"}${guide.canvas ? " is-canvas" : ""}`;
       node.style.cssText = guide.axis === "x" ? `left:${guide.at}px;top:0;height:${box.height}px` : `top:${guide.at}px;left:0;width:${box.width}px`;
+      board.append(node);
+    });
+    distances.forEach((gap) => {
+      const node = document.createElement("div");
+      node.className = `studio-guide studio-distance studio-distance--${gap.axis}`;
+      node.style.cssText = gap.axis === "x" ? `left:${gap.from}px;width:${gap.to - gap.from}px;top:${gap.at}px` : `top:${gap.from}px;height:${gap.to - gap.from}px;left:${gap.at}px`;
+      node.innerHTML = `<span>${Math.round(gap.to - gap.from)}</span>`;
       board.append(node);
     });
   };
@@ -3789,6 +4678,8 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       xs.push({ at: rect.x }, { at: rect.x + rect.width / 2 }, { at: rect.x + rect.width });
       ys.push({ at: rect.y }, { at: rect.y + rect.height / 2 }, { at: rect.y + rect.height });
     });
+    if (rulersOn) { currentPage().guides.v.forEach((at) => xs.push({ at, canvas: true, guide: true })); currentPage().guides.h.forEach((at) => ys.push({ at, canvas: true, guide: true })); }
+    columnEdges().forEach((at) => xs.push({ at, canvas: true, column: true }));
     return { xs, ys };
   };
   // 값 목록(edges) 중 하나가 후보에 붙으면 그만큼 밀어 준다. 없으면 null.
@@ -3848,6 +4739,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       applyFocal(event, focalPicker); return;
     }
     const blockElement = event.target.closest(".canvas-block");
+    if (event.button === 0 && (blockElement || event.target.matches("[data-archive-canvas]"))) canvas()?.querySelector(".studio-float-toolbar")?.remove();
     // 빈 캔버스를 누르면 러버밴드 선택 시작 (Design 모드, 왼쪽 버튼).
     if (!blockElement && event.button === 0 && studioMode === "design" && event.target.matches("[data-archive-canvas]")) { startMarquee(event); return; }
     if (!blockElement || !canvas()?.contains(blockElement)) return;
@@ -4008,7 +4900,8 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
         const node = canvas()?.querySelector(`[data-block-id="${CSS.escape(other.id)}"]`);
         if (node) node.setAttribute("style", blockStyle({ ...view(other), fixedAnchor: "top" }, layoutBox(currentPage(), activeLayout())));
       });
-      drawGuides(guides);
+      const movedBox = { left: left - dx + snappedDx, right: right - dx + snappedDx, top: top - dy + snappedDy, bottom: bottom - dy + snappedDy };
+      drawGuides(guides, nearestGaps(movedBox, movingIds));
       if (drag.group.length) drawSelectionBox();
       const placed = view(block);
       status(`X ${placed.x} · Y ${placed.y}${drag.group.length ? ` · ${drag.group.length + 1}개 함께 이동` : ""}${event.shiftKey ? " · 한 축 고정" : ""}`);
@@ -4038,7 +4931,14 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     const typing = /input|textarea|select/i.test(document.activeElement?.tagName || "") || Boolean(document.activeElement?.isContentEditable);
     const combo = event.metaKey || event.ctrlKey;
     if (combo && event.key.toLowerCase() === "z") { event.preventDefault(); restoreHistory(historyIndex + (event.shiftKey ? 1 : -1)); return; }
+    if (combo && event.key.toLowerCase() === "k") { event.preventDefault(); if (document.querySelector(".studio-palette")) closePalette(); else openPalette(); return; }
+    if (combo && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "r") { event.preventDefault(); setRulers(!rulersOn); return; }
+    if (combo && event.shiftKey && event.key.toLowerCase() === "s") { event.preventDefault(); quickCheckpoint(); return; }
+    if (combo && event.shiftKey && event.key.toLowerCase() === "p") { event.preventDefault(); openPublish(); return; }
+    if (combo && event.key === "'") { event.preventDefault(); setColumns(!columnsOn); return; }
+    if (document.querySelector(".studio-modal, .studio-palette")) return; // 창이 열려 있으면 창이 키를 처리
     if (typing) return;
+    if (event.key === "?" && !combo) { event.preventDefault(); openShortcuts(); return; }
     if (combo && event.key === "0") { event.preventDefault(); fitZoom(); applyZoom(); status(`화면 맞춤 · ${Math.round(zoom * 100)}%`); return; }
     if (combo && ["=", "+", "-", "_"].includes(event.key)) { event.preventDefault(); setZoom(zoom * (["-", "_"].includes(event.key) ? 1 / 1.25 : 1.25)); status(`확대 ${Math.round(zoom * 100)}%`); return; }
     if (event.key === "Escape" && document.querySelector(".studio-context-menu, .studio-font-picker")) { closeContextMenu(); closeFontPicker(); return; }
@@ -4073,8 +4973,9 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   addEventListener("keydown", handleKeydown);
 
   const initiallySaved = saveDraft(data, published, draftBase); syncArchiveFontStylesheet(data, activePageId); renderSelection({ pages: true });
+  try { if (!localStorage.getItem("psj-studio8-welcome")) { localStorage.setItem("psj-studio8-welcome", "1"); setTimeout(() => toast("Studio 8 · ? 키로 단축키 표, Ctrl+K로 명령 팔레트를 열 수 있어요", { duration: 6500 }), 900); } } catch (error) { /* storage blocked */ }
   if (!initiallySaved) status("자동 저장 실패 — JSON 백업을 눌러주세요");
   else if (draftConflict) status("게시본이 변경됐어요 · 백업 후 비교하고 게시하세요");
   loadComponentMetas().then(() => { if (disposed) return; renderComponentLibrary(); if (selected()?.type === "component") renderInspector(); renderCanvas(); }).catch((error) => console.warn("Component list could not load.", error));
-  return () => { disposed = true; clearTimeout(deferredRender); clearStudioMotion(); destroyEditorComponents(); saveDraft(data, published, draftBase); removeEventListener("keydown", handleKeydown); removeEventListener("paste", handlePaste); removeEventListener("pointerdown", closeMenusOnOutside, true); removeEventListener("blur", closeContextMenu); closeContextMenu(); closeFontPicker(); document.querySelector("#archive-font-preview")?.remove(); document.querySelector(".studio-device")?.remove(); };
+  return () => { disposed = true; clearTimeout(deferredRender); clearStudioMotion(); destroyEditorComponents(); saveDraft(data, published, draftBase); removeEventListener("keydown", handleKeydown); removeEventListener("paste", handlePaste); removeEventListener("resize", drawRulersSoon); closePalette(); closeModal(); removeEventListener("pointerdown", closeMenusOnOutside, true); removeEventListener("blur", closeContextMenu); closeContextMenu(); closeFontPicker(); document.querySelector("#archive-font-preview")?.remove(); document.querySelector(".studio-device")?.remove(); };
 }

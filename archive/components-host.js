@@ -1,9 +1,9 @@
 // Runs custom components (components/*.js) and sandboxed code blocks inside Archive pages.
 // The contract every component follows is documented in docs/COMPONENTS.md.
 
-import { COMPONENTS } from "../components/registry.js?v=studio7";
+import { COMPONENTS } from "../components/registry.js?v=studio8";
 
-const VERSION = "studio7";
+const VERSION = "studio8";
 
 // Pinned CDN builds a component may ask for with ctx.lib(name).
 export const LIBRARIES = {
@@ -11,6 +11,8 @@ export const LIBRARIES = {
   gsap: "https://cdn.jsdelivr.net/npm/gsap@3.13.0/index.js",
   ScrollTrigger: "https://cdn.jsdelivr.net/npm/gsap@3.13.0/ScrollTrigger.js",
   lenis: "https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.mjs",
+  lottie: "https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/esm/lottie.min.js",
+  dotlottie: "https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@0.40.0/dist/index.js",
 };
 
 const PROP_TYPES = ["text", "textarea", "number", "range", "color", "toggle", "select", "image", "images", "url"];

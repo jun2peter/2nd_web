@@ -1,7 +1,7 @@
 // Page-level effects for the public Archive site: smooth scroll, custom cursors,
 // split-text reveals, magnetic hover and scroll pinning. Each binder returns a cleanup function.
 
-import { loadLibrary } from "./components-host.js?v=studio7";
+import { loadLibrary } from "./components-host.js?v=studio8";
 
 const noop = () => {};
 const coarsePointer = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;

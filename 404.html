@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>페이지를 찾을 수 없어요 — PARK SEUNGJUN</title>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body { align-items: center; background: #0b0b0c; color: #f4f3ed; display: flex; font: 16px/1.6 Arial, sans-serif; justify-content: center; text-align: center; }
+      main { max-width: 480px; padding: 32px; }
+      p.code { color: #8a8a85; font-family: Menlo, Consolas, monospace; font-size: 12px; letter-spacing: .12em; margin: 0 0 14px; }
+      h1 { font-size: 28px; letter-spacing: -.02em; margin: 0 0 12px; }
+      a { color: #fff; }
+      .buttons { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
+      .buttons a { background: #fff; border-radius: 999px; color: #111; font-weight: 600; padding: 12px 20px; text-decoration: none; }
+      .buttons a.secondary { background: transparent; border: 1px solid rgba(255,255,255,.4); color: #fff; }
+    </style>
+    <script>
+      // 옛 주소 형태(/page/slug, /slug)로 들어오면 아카이브의 같은 이름 페이지로 보내 본다.
+      (function () {
+        var parts = location.pathname.split("/").filter(Boolean);
+        var slug = parts[parts.length - 1] || "";
+        var base = location.pathname.replace(/[^/]*$/, "");
+        if (slug && !/\./.test(slug) && parts.length > 1) {
+          var target = base.replace(new RegExp(slug + "/?$"), "") + "?view=archive&page=" + encodeURIComponent(slug);
+          document.addEventListener("DOMContentLoaded", function () { var link = document.getElementById("guess"); if (link) { link.href = target; link.hidden = false; } });
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <main>
+      <p class="code">404 · NOT FOUND</p>
+      <h1>이 주소에는 페이지가 없어요</h1>
+      <p>주소가 바뀌었거나 아직 게시되지 않은 페이지예요.</p>
+      <div class="buttons"><a href="./">처음으로</a><a class="secondary" id="guess" href="./?view=archive" hidden>같은 이름의 아카이브 페이지 열기</a></div>
+    </main>
+  </body>
+</html>

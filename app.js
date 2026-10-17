@@ -11,7 +11,7 @@ import {
   resolveArchivePage,
   syncArchiveCustomHead,
   syncArchiveFontStylesheet,
-} from "./archive-editor.js?v=studio7";
+} from "./archive-editor.js?v=studio8";
 
 const app = document.querySelector("#app");
 

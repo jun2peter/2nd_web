@@ -139,6 +139,15 @@ content:
           - { name: fonts, label: 구글 폰트 이름, type: string, list: true }
           - { name: customCSS, label: 사이트 CSS, type: code }
           - { name: customHead, label: head 코드, type: code }
+          - { name: siteURL, label: 공개 주소, type: string }
+          - name: theme
+            label: 다크 모드
+            type: object
+            fields:
+              - { name: toggle, label: 방문자 다크 모드 버튼, type: boolean }
+              - { name: darkBackground, label: 다크 배경, type: string }
+              - { name: darkText, label: 다크 글자색, type: string }
+              - { name: dimMedia, label: 사진 어둡게, type: boolean }
           - name: seo
             label: 기본 SEO
             type: object
@@ -171,6 +180,9 @@ content:
               - { name: height, label: 페이지 길이, type: number }
               - { name: background, label: 배경색, type: string }
               - { name: grid, label: 스냅 간격, type: number }
+              - { name: columns, label: 컬럼 수, type: number }
+              - { name: columnGap, label: 컬럼 간격, type: number }
+              - { name: columnMargin, label: 컬럼 좌우 여백, type: number }
               - { name: fontStylesheet, label: 웹폰트 CSS 주소, type: string }
               - { name: viewport, label: 첫 화면 높이, type: number }
               - { name: backgroundImage, label: 배경 이미지, type: string }
@@ -384,6 +396,28 @@ content:
                 options:
                   values: [none, zoom, color, gray, bright, lift, swap]
               - { name: hoverSrc, type: string }
+              - name: maskPreset
+                type: select
+                options:
+                  values: [none, fade-bottom, fade-top, fade-left, fade-right, fade-x, fade-y, vignette, image]
+              - { name: maskImage, type: string }
+              - name: maskMode
+                type: select
+                options:
+                  values: [alpha, luminance]
+              - name: maskSize
+                type: select
+                options:
+                  values: [cover, contain, stretch]
+              - { name: maskPosition, type: string }
+              - { name: duotone, type: boolean }
+              - { name: duotoneDark, type: string }
+              - { name: duotoneLight, type: string }
+              - { name: formEndpoint, label: 폼 받을 주소, type: string }
+              - { name: formFields, label: 폼 칸, type: string, list: true }
+              - { name: formExtra, label: 폼 추가 칸, type: text }
+              - { name: formSubmitLabel, type: string }
+              - { name: formSuccess, type: string }
               - { name: shadowX, type: number }
               - { name: shadowY, type: number }
               - { name: shadowBlur, type: number }

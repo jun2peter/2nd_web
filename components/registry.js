@@ -12,4 +12,8 @@ export const COMPONENTS = [
   "media-text",
   "hover-reveal",
   "compare-slider",
+  "lottie-player",
+  "horizontal-scroll",
+  "image-glitch",
+  "coverflow-3d",
 ];
