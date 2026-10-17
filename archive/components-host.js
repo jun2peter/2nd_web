@@ -1,9 +1,9 @@
 // Runs custom components (components/*.js) and sandboxed code blocks inside Archive pages.
 // The contract every component follows is documented in docs/COMPONENTS.md.
 
-import { COMPONENTS } from "../components/registry.js?v=studio6";
+import { COMPONENTS } from "../components/registry.js?v=studio7";
 
-const VERSION = "studio6";
+const VERSION = "studio7";
 
 // Pinned CDN builds a component may ask for with ctx.lib(name).
 export const LIBRARIES = {
@@ -97,7 +97,8 @@ export function sanitizeProps(raw = {}) {
     if (typeof value === "string") clean[key] = value.slice(0, 20000);
     else if (typeof value === "number" && Number.isFinite(value)) clean[key] = value;
     else if (typeof value === "boolean") clean[key] = value;
-    else if (Array.isArray(value)) clean[key] = value.filter((item) => typeof item === "string").slice(0, 60).map((item) => item.slice(0, 2000));
+    // Studio 7: 드롭으로 넣은 프레임은 data URL이라 길다 — 이미지 data URL은 자르지 않는다(최대 2MB).
+    else if (Array.isArray(value)) clean[key] = value.filter((item) => typeof item === "string").slice(0, 60).map((item) => item.slice(0, /^data:image\//i.test(item) ? 2_000_000 : 2000));
   });
   return clean;
 }

@@ -136,6 +136,9 @@ content:
             options:
               values: [default, dot, crosshair, ring, blend]
           - { name: cursorColor, label: 커서 색, type: string }
+          - { name: fonts, label: 구글 폰트 이름, type: string, list: true }
+          - { name: customCSS, label: 사이트 CSS, type: code }
+          - { name: customHead, label: head 코드, type: code }
           - name: seo
             label: 기본 SEO
             type: object
@@ -170,6 +173,21 @@ content:
               - { name: grid, label: 스냅 간격, type: number }
               - { name: fontStylesheet, label: 웹폰트 CSS 주소, type: string }
               - { name: viewport, label: 첫 화면 높이, type: number }
+              - { name: backgroundImage, label: 배경 이미지, type: string }
+              - { name: backgroundVideo, label: 배경 영상, type: string }
+              - name: backgroundFit
+                label: 배경 맞춤
+                type: select
+                options:
+                  values: [cover, contain]
+              - { name: backgroundPosition, label: 배경 위치, type: string }
+              - { name: backgroundOverlay, label: 배경 덮는 색, type: string }
+              - name: backgroundEffect
+                label: 배경 효과
+                type: select
+                options:
+                  values: [none, drift, noise, drift-noise]
+          - { name: customCSS, label: 페이지 CSS, type: code }
           - name: layouts
             label: 태블릿·모바일 배치
             type: object
@@ -353,6 +371,9 @@ content:
               - { name: invert, type: number }
               - { name: focalX, type: number }
               - { name: focalY, type: number }
+              - { name: videoStart, label: 영상 구간 시작(초), type: number }
+              - { name: videoEnd, label: 영상 구간 끝(초), type: number }
+              - { name: playbackRate, label: 재생 속도, type: number }
               - name: clipShape
                 type: select
                 options:

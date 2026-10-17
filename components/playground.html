@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <title>Component Playground</title>
-    <link rel="stylesheet" href="../styles.css?v=studio6" />
+    <link rel="stylesheet" href="../styles.css?v=studio7" />
     <style>
       body { background: #d9d9d6; color: #111; font: 12px Arial, sans-serif; margin: 0; }
       .playground { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 100vh; }
@@ -38,7 +38,7 @@
       <main><div class="stage" data-stage style="width:1200px;height:720px"></div></main>
     </div>
     <script type="module">
-      import { loadComponentMetas, mountComponents, resolveProps } from "../archive/components-host.js?v=studio6";
+      import { loadComponentMetas, mountComponents, resolveProps } from "../archive/components-host.js?v=studio7";
       const params = new URLSearchParams(location.search);
       const picker = document.querySelector("[data-pick]");
       const form = document.querySelector("[data-props]");

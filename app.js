@@ -9,8 +9,9 @@ import {
   hasArchiveDraft,
   normalizeArchiveData,
   resolveArchivePage,
+  syncArchiveCustomHead,
   syncArchiveFontStylesheet,
-} from "./archive-editor.js?v=studio6";
+} from "./archive-editor.js?v=studio7";
 
 const app = document.querySelector("#app");
 
@@ -189,6 +190,7 @@ function archiveTemplate({ editing = false, draft = false, pageSlug = "" } = {})
   document.documentElement.style.setProperty("--page-transition-easing", documentData.settings.transition.easing);
   document.documentElement.style.setProperty("--page-transition-color", documentData.settings.transition.color);
   syncArchiveFontStylesheet(documentData, page.id);
+  syncArchiveCustomHead(documentData, { enabled: !editing }); // Studio 7 (C1): head 코드는 공개 화면에서만
   if (editing) return archiveStudioTemplate(documentData, page.id);
   const hideSwitch = documentData.settings.hideViewSwitch;
   return `<main id="main" class="archive-page archive-transition-${escapeHTML(documentData.settings.transition.preset)}" style="--page-transition-duration:${documentData.settings.transition.duration}ms;--page-transition-easing:${escapeHTML(documentData.settings.transition.easing)};--page-transition-color:${escapeHTML(documentData.settings.transition.color)};background-color:${escapeHTML(page.canvas.background)}">

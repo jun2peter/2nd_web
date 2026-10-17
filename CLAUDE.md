@@ -13,7 +13,7 @@
 
 | 파일 | 역할 |
 |---|---|
-| `index.html` | 진입점. CSS/JS를 `?v=studio6`로 캐시 무효화 |
+| `index.html` | 진입점. CSS/JS를 `?v=studio7`로 캐시 무효화 |
 | `app.js` | 라우팅, Experience 화면, 작품 상세, Archive 화면 틀(고정 레이어 포함) |
 | `archive-editor.js` | 빌더 본체: 데이터 정규화(`normalize*`), 블록 마크업, 공개 사이트 실행(`bindArchiveViewer`), 편집기(`bindArchiveStudio`), 검수(`runPreflight`) |
 | `archive/responsive.js` | Desktop/Tablet/Mobile 배치: 화면별 덮어쓰기 값, 미디어쿼리 CSS 생성, 자동 정렬(`autoLayout`) |
@@ -28,6 +28,8 @@
 | `docs/ROADMAP_STUDIO6.md` | **Studio 6 작업표**(이미지·영상을 재료로 + 편집기 손맛). 상태 표시(✅/🌙/📋)와 진행 기록을 함께 갱신 |
 
 Studio 6에서 블록에 추가된 필드: `clipShape`·`clipCustom`(모양으로 자르기, `clipPathFor`), `focalX`·`focalY`(보이는 중심 → `--focal`), `hoverEffect`·`hoverSrc`(`data-hover-effect`, CSS는 styles.css 끝 Studio 6 섹션), `contrast`·`saturate`·`brightness`·`hueRotate`·`sepia`·`invert`(`visualEffectStyle`). 편집기 클립보드 키는 `psj-archive-clipboard-v1`(localStorage). 새 컴포넌트: `scroll-sequence`, `media-text`, `hover-reveal`, `compare-slider`.
+
+Studio 7(2026-10-17 새벽)에서 추가: 편집기 다중 선택(`selectedIds`, `selected()`는 첫 선택)·정렬·스마트 가이드·핸들 8개+회전·더블클릭 글자 편집·우클릭 메뉴·레이어 드래그·폰트 고르기(`FONT_LIBRARY`, `settings.fonts` → `googleFontsHref`)·파일 드롭 WebP 압축(`compressImage`)·포컬 썸네일. 데이터 필드: 블록 `videoStart`·`videoEnd`·`playbackRate`, 재생 방식 `scrub`; 페이지 `customCSS`, `canvas.background{Image,Video,Fit,Position,Overlay,Effect}`(`canvasBackgroundMarkup`); 설정 `fonts`·`customCSS`·`customHead`(`syncArchiveCustomHead`, 공개 화면 전용). 작업표: `docs/ROADMAP_STUDIO6.md`, 보고서: `docs/NIGHT_REPORT_2026-10-17.md`.
 
 ## archive.json v5 구조 (요약)
 
@@ -48,7 +50,7 @@ block: { id, type, x, y, width, height, z, ...type별 값, motion{entrance,hover
 1. **옛 데이터가 계속 열려야 합니다.** 필드를 추가할 땐 `normalizeBlock`/`normalizePage`/`normalizeArchiveData`에 기본값을 넣고, 없던 값이 들어와도 깨지지 않게 하세요. 필드 이름을 바꾸거나 지우지 마세요.
 2. 새 블록 속성을 추가하면 함께 손볼 곳: `normalizeBlock` → 마크업(`blockContent`/`archiveBlockMarkup`) → 인스펙터(`inspectorMarkup`) → 공개 사이트 동작(`bindArchiveViewer`) → 필요하면 `runPreflight` 경고 → `.pages.yml`.
 3. 화면 크기마다 달라야 하는 값이면 `archive/responsive.js`의 `OVERRIDE_RULES`에 추가하고 `responsiveCSS`에서 CSS로 내보내세요.
-4. **모듈을 고치면 캐시 버전을 올리세요**: 모든 `?v=studio6` 문자열(index.html, app.js, archive-editor.js, archive/*.js, playground)을 같은 새 값으로 바꿉니다.
+4. **모듈을 고치면 캐시 버전을 올리세요**: 모든 `?v=studio7` 문자열(index.html, app.js, archive-editor.js, archive/*.js, playground)을 같은 새 값으로 바꿉니다.
 5. 외부 라이브러리는 CDN + **정확한 버전 고정**만. 컴포넌트는 `ctx.lib(name)`으로, 목록은 `LIBRARIES`에.
 6. 모든 움직임은 `prefers-reduced-motion`·방문자 "Pause motion"·터치 기기(hover 없음)를 고려합니다.
 7. 편집기 UI 문구는 한국어. 사용자가 보는 설명은 짧고 구체적으로.
