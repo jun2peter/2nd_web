@@ -17,7 +17,7 @@ import {
   resolveBlock,
   responsiveCSS,
   setOverride,
-} from "./archive/responsive.js?v=studio8";
+} from "./archive/responsive.js?v=studio8b";
 import {
   bindCodeBlocks,
   codeBlockDocument,
@@ -29,12 +29,12 @@ import {
   reattachLiveComponents,
   resolveProps,
   sanitizeProps,
-} from "./archive/components-host.js?v=studio8";
-import { bindCustomCursor, bindMagnetic, bindPins, bindSmoothScroll, bindSplitText } from "./archive/effects.js?v=studio8";
-import { toast, openModal, closeModal, openCommandPalette, closePalette, shortcutSheetMarkup, emptyStateMarkup } from "./archive/studio-ui.js?v=studio8";
-import { SECTION_TEMPLATES, PAGE_TEMPLATES, sectionTemplate, sectionSketch } from "./archive/templates.js?v=studio8";
-import { listCheckpoints, saveCheckpoint, loadCheckpoint, deleteCheckpoint, formatBytes, formatWhen } from "./archive/checkpoints.js?v=studio8";
-import { parseRepoFromEditURL, getToken, setToken, getRepoConfig, setRepoConfig, checkConnection, publishArchive, uploadMedia, fetchFileMeta, putFile, encodeText } from "./archive/github-publish.js?v=studio8";
+} from "./archive/components-host.js?v=studio8b";
+import { bindCustomCursor, bindMagnetic, bindPins, bindSmoothScroll, bindSplitText } from "./archive/effects.js?v=studio8b";
+import { toast, openModal, closeModal, openCommandPalette, closePalette, shortcutSheetMarkup, emptyStateMarkup } from "./archive/studio-ui.js?v=studio8b";
+import { SECTION_TEMPLATES, PAGE_TEMPLATES, sectionTemplate, sectionSketch } from "./archive/templates.js?v=studio8b";
+import { listCheckpoints, saveCheckpoint, loadCheckpoint, deleteCheckpoint, formatBytes, formatWhen } from "./archive/checkpoints.js?v=studio8b";
+import { parseRepoFromEditURL, getToken, setToken, getRepoConfig, setRepoConfig, checkConnection, publishArchive, uploadMedia, fetchFileMeta, putFile, encodeText } from "./archive/github-publish.js?v=studio8b";
 
 const DATA_VERSION = 5;
 const STORAGE_KEY = "psj-archive-builder-draft-v5";
@@ -1492,22 +1492,23 @@ export function archiveStudioTemplate(source, activePageId = "") {
   const data = normalizeArchiveData(source);
   const page = data.pages.find((item) => item.id === activePageId) || data.pages.find((item) => item.id === data.settings.defaultPageId) || data.pages[0];
   return `<main id="main" class="archive-page archive-page--studio">
-    <div class="archive-studio" data-archive-studio data-active-page="${escapeHTML(page.id)}">
+    <div class="archive-studio studio-v8" data-archive-studio data-active-page="${escapeHTML(page.id)}">
       <aside class="archive-studio__left">
-        <div class="archive-studio__brand"><strong>ARCHIVE STUDIO <b>8</b></strong><span>Media · Tools · Publish</span></div>
+        <div class="archive-studio__brand"><strong><b>8</b>Archive Studio</strong><span>v8 · 편집기</span></div>
         <a class="studio-exit" href="?view=archive">← 사이트로 돌아가기</a>
-        <section class="studio-panel studio-pages"><div class="studio-panel__head"><div><h2>페이지</h2><small data-page-count>${data.pages.length}개</small></div></div><div data-page-list>${pageListMarkup(data, page.id)}</div><div class="studio-page-create"><button data-action="add-page" type="button">＋ 메뉴 페이지</button><button data-action="add-unlisted-page" type="button">＋ 링크 전용</button></div></section>
-        <section class="studio-panel studio-layers"><div class="studio-panel__head"><h2>레이어</h2><small>드래그로 순서 · 더블클릭 이름</small></div><input class="studio-layer-search" data-layer-search type="search" placeholder="레이어 검색" aria-label="레이어 검색"><div data-layer-list></div></section>
-        <section class="studio-panel studio-insert"><h2>요소 추가</h2><p class="studio-insert__label">기본</p><div class="studio-add-grid">
+        <nav class="studio-tabs" role="tablist" aria-label="왼쪽 패널" data-left-tabs><button data-left-tab="layers" class="is-active" role="tab" aria-selected="true" type="button">레이어</button><button data-left-tab="insert" role="tab" aria-selected="false" type="button">＋ 추가</button><button data-left-tab="assets" role="tab" aria-selected="false" type="button">자산<small data-asset-count-tab></small></button><button data-left-tab="settings" role="tab" aria-selected="false" type="button">설정</button></nav>
+        <section class="studio-panel studio-pages" data-left-panel="layers"><div class="studio-panel__head"><div><h2>페이지</h2><small data-page-count>${data.pages.length}개</small></div></div><div data-page-list>${pageListMarkup(data, page.id)}</div><div class="studio-page-create"><button data-action="add-page" type="button">＋ 메뉴 페이지</button><button data-action="add-unlisted-page" type="button">＋ 링크 전용</button></div></section>
+        <section class="studio-panel studio-layers" data-left-panel="layers"><div class="studio-panel__head"><h2>레이어</h2><small>드래그로 순서 · 더블클릭 이름</small></div><input class="studio-layer-search" data-layer-search type="search" placeholder="레이어 검색" aria-label="레이어 검색"><div data-layer-list></div></section>
+        <section class="studio-panel studio-insert" data-left-panel="insert"><h2>요소 추가</h2><p class="studio-insert__label">기본</p><div class="studio-add-grid">
           <button data-add="text" type="button"><i>T</i><span>텍스트</span></button><button data-add="button" type="button"><i>↗</i><span>버튼</span></button><button data-add="shape" type="button"><i>○</i><span>도형</span></button><button data-add="line" type="button"><i>—</i><span>선</span></button></div><p class="studio-insert__label">미디어</p><div class="studio-add-grid"><button data-add="image" type="button"><i>▧</i><span>이미지·GIF</span></button><button data-add="video" type="button"><i>▶</i><span>영상</span></button><button data-add="audio" type="button"><i>♪</i><span>오디오</span></button><button data-add="gallery" type="button"><i>▦</i><span>갤러리</span></button><button data-add="embed" type="button"><i>⌘</i><span>임베드</span></button></div><p class="studio-insert__label">인터랙션</p><div class="studio-add-grid"><button data-add="marquee" type="button"><i>→</i><span>반복 글자</span></button><button data-add="nav" type="button"><i>☰</i><span>페이지 메뉴</span></button><button data-add="form" type="button"><i>✉</i><span>폼</span></button>
         </div><p class="studio-insert__label">커스텀 · 무엇이든</p><div class="studio-add-grid"><button data-add="code" type="button"><i>&lt;/&gt;</i><span>코드 블록</span></button><button data-add-component="" type="button" data-scroll-library><i>✦</i><span>컴포넌트</span></button><button data-action="open-templates" type="button"><i>▤</i><span>섹션 템플릿</span></button></div><div class="studio-component-library" data-component-library><p class="studio-muted">컴포넌트 목록을 불러오는 중…</p></div></section>
-        <details class="studio-panel studio-assets"><summary>자산 <small data-asset-count></small></summary><div class="studio-assets__body" data-asset-list><p class="studio-muted">아직 사용한 이미지·영상이 없어요.</p></div></details>
-        <details class="studio-panel studio-site-settings"><summary>사이트 설정</summary><div class="studio-site-settings__body">
+        <details class="studio-panel studio-assets" data-left-panel="assets" open><summary>자산 <small data-asset-count></small></summary><div class="studio-assets__body" data-asset-list><p class="studio-muted">아직 사용한 이미지·영상이 없어요.</p></div></details>
+        <details class="studio-panel studio-site-settings" data-left-panel="settings" open><summary>사이트 설정</summary><div class="studio-site-settings__body">
           ${siteSettingsMarkup(data)}
         </div></details>
       </aside>
       <section class="archive-studio__center">
-        <header class="archive-studio__topbar"><div class="studio-mode-switch" role="group" aria-label="편집 모드"><button class="is-active" data-studio-mode="design" aria-pressed="true" type="button">Design</button><button data-studio-mode="motion" aria-pressed="false" type="button">Motion</button></div><div class="studio-breakpoints" role="group" aria-label="화면 크기" data-breakpoints>${breakpointSwitchMarkup(page, "desktop")}</div><div class="studio-topbar__context"><strong data-current-page-name>${escapeHTML(page.name)}</strong><span data-current-page-meta>${page.visibility === "listed" ? "메뉴 표시" : page.visibility === "unlisted" ? "링크 전용" : "초안"} · ${page.canvas.width}×${page.canvas.height}</span><small data-save-status aria-live="polite">이 브라우저에 자동 저장됨</small></div><div class="studio-topbar__actions"><button data-action="undo" type="button" title="실행 취소 (Ctrl+Z)" aria-label="실행 취소">↶</button><button data-action="redo" type="button" title="다시 실행 (Ctrl+Shift+Z)" aria-label="다시 실행">↷</button><span class="studio-zoom" role="group" aria-label="캔버스 확대"><button data-action="zoom-out" type="button" title="축소 (Ctrl+-)" aria-label="축소">−</button><select data-zoom aria-label="캔버스 확대"><option value="0.25">25%</option><option value="0.5" selected>50%</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.5">150%</option></select><button data-action="zoom-in" type="button" title="확대 (Ctrl+=)" aria-label="확대">＋</button><button data-action="zoom-fit" type="button" title="화면 맞춤 (Ctrl+0)">맞춤</button></span><button data-action="toggle-rulers" type="button" title="눈금자·가이드 (Ctrl+R)" aria-pressed="false">눈금자</button><button data-action="toggle-columns" type="button" title="컬럼 그리드 보기 (Ctrl+')" aria-pressed="false">컬럼</button><button data-action="command-palette" type="button" title="명령 팔레트 (Ctrl+K)">⌘K</button><button data-action="shortcuts" type="button" title="단축키 (?)" aria-label="단축키 보기">?</button><button data-action="preflight" type="button">검수</button><button data-action="device-preview" type="button">기기 미리보기</button><button data-action="preview" type="button">새 탭</button><button data-action="file-menu" type="button" aria-haspopup="menu">파일 ▾</button><span hidden><button data-action="import" type="button">불러오기</button><button data-action="reset-published" type="button">게시본</button><button data-action="download" type="button">백업</button><button data-action="publish-copy" type="button">복사 게시</button></span><button class="studio-publish" data-action="publish" type="button">게시</button></div></header>
+        <header class="archive-studio__topbar"><div class="studio-mode-switch" role="group" aria-label="편집 모드"><button class="is-active" data-studio-mode="design" aria-pressed="true" type="button">Design</button><button data-studio-mode="motion" aria-pressed="false" type="button">Motion</button></div><div class="studio-breakpoints" role="group" aria-label="화면 크기" data-breakpoints>${breakpointSwitchMarkup(page, "desktop")}</div><div class="studio-topbar__context"><strong data-current-page-name>${escapeHTML(page.name)}</strong><span data-current-page-meta>${page.visibility === "listed" ? "메뉴 표시" : page.visibility === "unlisted" ? "링크 전용" : "초안"} · ${page.canvas.width}×${page.canvas.height}</span><small data-save-status aria-live="polite">이 브라우저에 자동 저장됨</small></div><div class="studio-topbar__actions"><button data-action="undo" type="button" title="실행 취소 (Ctrl+Z)" aria-label="실행 취소">↶</button><button data-action="redo" type="button" title="다시 실행 (Ctrl+Shift+Z)" aria-label="다시 실행">↷</button><span class="studio-zoom" role="group" aria-label="캔버스 확대"><button data-action="zoom-out" type="button" title="축소 (Ctrl+-)" aria-label="축소">−</button><select data-zoom aria-label="캔버스 확대"><option value="0.25">25%</option><option value="0.5" selected>50%</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.5">150%</option></select><button data-action="zoom-in" type="button" title="확대 (Ctrl+=)" aria-label="확대">＋</button><button data-action="zoom-fit" type="button" title="화면 맞춤 (Ctrl+0)">맞춤</button></span><i></i><button data-action="toggle-rulers" type="button" title="눈금자·가이드 (Ctrl+R)" aria-pressed="false">눈금자</button><button data-action="toggle-columns" type="button" title="컬럼 그리드 보기 (Ctrl+')" aria-pressed="false">컬럼</button><i></i><button data-action="command-palette" type="button" title="명령 팔레트 (Ctrl+K)">⌘K</button><button data-action="shortcuts" type="button" title="단축키 (?)" aria-label="단축키 보기">?</button><button data-action="toggle-editor-theme" type="button" title="편집기 어둡게 / 밝게 (Ctrl+Shift+D)" aria-label="편집기 테마" aria-pressed="false">◐</button><i></i><button data-action="preflight" type="button" title="게시 전 확인">✓ 검수</button><button data-action="device-preview" type="button" title="폰·태블릿 크기로 보기">▯ 기기</button><button data-action="preview" type="button" title="새 탭에서 사이트처럼 보기">↗ 미리보기</button><button data-action="file-menu" type="button" aria-haspopup="menu">파일 ▾</button><span hidden><button data-action="import" type="button">불러오기</button><button data-action="reset-published" type="button">게시본</button><button data-action="download" type="button">백업</button><button data-action="publish-copy" type="button">복사 게시</button></span><button class="studio-publish" data-action="publish" type="button" title="GitHub에 올리기 (Ctrl+Shift+P)">↑ 게시</button></div></header>
         <div class="archive-studio__workspace"><div class="studio-layout-prompt" data-layout-prompt hidden></div><div class="archive-studio__board-sizer"><div class="archive-studio__board">${archiveCanvasMarkup(data, page, { editing: true })}</div></div></div>
         ${motionLabDockMarkup({ blocks: [...page.blocks, ...data.globals] })}
       </section>
@@ -3538,6 +3539,11 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       { id: "page-templates", group: "페이지", label: "템플릿으로 새 페이지…", run: () => openTemplates("pages") },
       { id: "select-all", group: "선택", label: "모두 선택", keys: "Ctrl+A", run: () => selectAll() },
       { id: "deselect", group: "선택", label: "선택 해제 · 페이지 설정 보기", keys: "Esc", run: () => { selectedId = ""; selectedIds = []; renderSelection(); } },
+      { id: "theme", group: "보기", label: "편집기 다크 / 라이트 전환", keys: "Ctrl+Shift+D", run: () => setEditorTheme(!studio.classList.contains("is-dark")) },
+      { id: "tab-insert", group: "보기", label: "왼쪽 패널: 추가", run: () => setLeftTab("insert") },
+      { id: "tab-layers", group: "보기", label: "왼쪽 패널: 레이어·페이지", run: () => setLeftTab("layers") },
+      { id: "tab-assets", group: "보기", label: "왼쪽 패널: 자산", run: () => setLeftTab("assets") },
+      { id: "tab-settings", group: "보기", label: "왼쪽 패널: 사이트 설정", run: () => setLeftTab("settings") },
       { id: "shortcuts", group: "도움", label: "단축키 표", keys: "?", run: () => openShortcuts() },
     ];
   };
@@ -3721,6 +3727,8 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
       if (performance.now() - suppressCanvasClick < 400) { suppressCanvasClick = 0; return; }
       finishTextEdit(); selectedId = ""; selectedIds = []; renderSelection(); return;
     }
+    const leftTab = event.target.closest("[data-left-tab]");
+    if (leftTab) { setLeftTab(leftTab.dataset.leftTab); return; }
     const assetSelect = event.target.closest("[data-asset-select]");
     if (assetSelect) { const asset = assetAt(assetSelect.dataset.assetSelect); if (asset) selectAssetUse(asset); return; }
     const assetInsert = event.target.closest("[data-asset-insert]");
@@ -3752,7 +3760,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     if (layoutButton) { switchLayout(layoutButton.dataset.studioLayout); return; }
     const componentButton = event.target.closest("[data-add-component]");
     if (componentButton) {
-      if (!componentButton.dataset.addComponent) { studio.querySelector("[data-component-library]")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); return; }
+      if (!componentButton.dataset.addComponent) { setLeftTab("insert"); studio.querySelector("[data-component-library]")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); return; }
       const meta = componentMetas.get(componentButton.dataset.addComponent);
       if (!meta) return;
       const page = currentPage();
@@ -3886,6 +3894,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     if (action === "checkpoints") { openCheckpoints(); return; }
     if (action === "publish") { openPublish(); return; }
     if (action === "toggle-rulers") { setRulers(!rulersOn); return; }
+    if (action === "toggle-editor-theme") { setEditorTheme(!studio.classList.contains("is-dark")); return; }
     if (action === "toggle-columns") { setColumns(!columnsOn); return; }
     if (action === "clear-guides") { currentPage().guides = { v: [], h: [] }; persist(); renderPageGuides(); renderInspector(); status("가이드를 모두 지웠어요"); return; }
     if (action === "shortcuts") { openShortcuts(); return; }
@@ -4330,6 +4339,36 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   addEventListener("resize", drawRulersSoon);
   setRulers(rulersOn, { silent: true }); setColumns(columnsOn, { silent: true });
 
+  // ===== Studio 8.1: 왼쪽 패널 탭 · 편집기 다크/라이트 테마 · UI 글꼴 =====
+  const leftPanel = studio.querySelector(".archive-studio__left");
+  const LEFT_TABS = ["layers", "insert", "assets", "settings"];
+  const setLeftTab = (tab, { remember = true } = {}) => {
+    if (!leftPanel) return;
+    const next = LEFT_TABS.includes(tab) ? tab : "layers";
+    leftPanel.dataset.tab = next;
+    studio.querySelectorAll("[data-left-tab]").forEach((button) => { const active = button.dataset.leftTab === next; button.classList.toggle("is-active", active); button.setAttribute("aria-selected", String(active)); });
+    if (remember) { try { localStorage.setItem("psj-studio-left-tab", next); } catch (error) { /* ignore */ } }
+  };
+  let storedTab = "layers";
+  try { storedTab = localStorage.getItem("psj-studio-left-tab") || "layers"; } catch (error) { /* ignore */ }
+  setLeftTab(allBlocks().length ? storedTab : "insert", { remember: false });
+  const setEditorTheme = (dark, { silent = false } = {}) => {
+    studio.classList.toggle("is-dark", dark);
+    document.documentElement.classList.toggle("studio-dark", dark);
+    studio.querySelectorAll('[data-action="toggle-editor-theme"]').forEach((button) => { button.setAttribute("aria-pressed", String(dark)); button.textContent = dark ? "☀" : "◐"; });
+    try { localStorage.setItem("psj-studio-theme", dark ? "dark" : "light"); } catch (error) { /* ignore */ }
+    if (!silent) status(dark ? "편집기 다크 테마 (Ctrl+Shift+D)" : "편집기 라이트 테마 (Ctrl+Shift+D)");
+  };
+  let storedTheme = "";
+  try { storedTheme = localStorage.getItem("psj-studio-theme") || ""; } catch (error) { /* ignore */ }
+  setEditorTheme(storedTheme === "dark", { silent: true });
+  if (!document.getElementById("studio-ui-font")) {
+    const link = document.createElement("link");
+    link.id = "studio-ui-font"; link.rel = "stylesheet";
+    link.href = "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css";
+    document.head.append(link);
+  }
+
   // Studio 8 (B6): 끄는 동안 가장 가까운 이웃까지의 거리 — 좌우·상하 한 개씩
   const nearestGaps = (box, excludeIds = []) => {
     const others = allBlocks().filter((block) => !excludeIds.includes(block.id) && block.visible).map((block) => view(block)).filter((rect) => !rect.hidden);
@@ -4390,6 +4429,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     const assets = collectAssets();
     const key = assets.map((asset) => `${asset.url.slice(0, 80)}:${asset.uses.length}`).join("|");
     if (count) count.textContent = assets.length ? `${assets.length}개` : "";
+    const tabCount = studio.querySelector("[data-asset-count-tab]"); if (tabCount) tabCount.textContent = assets.length ? ` ${assets.length}` : "";
     if (key === assetsKey) return;
     assetsKey = key;
     list._assets = assets;
@@ -4934,6 +4974,7 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
     if (combo && event.key.toLowerCase() === "k") { event.preventDefault(); if (document.querySelector(".studio-palette")) closePalette(); else openPalette(); return; }
     if (combo && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "r") { event.preventDefault(); setRulers(!rulersOn); return; }
     if (combo && event.shiftKey && event.key.toLowerCase() === "s") { event.preventDefault(); quickCheckpoint(); return; }
+    if (combo && event.shiftKey && event.key.toLowerCase() === "d") { event.preventDefault(); setEditorTheme(!studio.classList.contains("is-dark")); return; }
     if (combo && event.shiftKey && event.key.toLowerCase() === "p") { event.preventDefault(); openPublish(); return; }
     if (combo && event.key === "'") { event.preventDefault(); setColumns(!columnsOn); return; }
     if (document.querySelector(".studio-modal, .studio-palette")) return; // 창이 열려 있으면 창이 키를 처리
@@ -4977,5 +5018,5 @@ export function bindArchiveStudio(initialData, publishedData, initialPageId = ""
   if (!initiallySaved) status("자동 저장 실패 — JSON 백업을 눌러주세요");
   else if (draftConflict) status("게시본이 변경됐어요 · 백업 후 비교하고 게시하세요");
   loadComponentMetas().then(() => { if (disposed) return; renderComponentLibrary(); if (selected()?.type === "component") renderInspector(); renderCanvas(); }).catch((error) => console.warn("Component list could not load.", error));
-  return () => { disposed = true; clearTimeout(deferredRender); clearStudioMotion(); destroyEditorComponents(); saveDraft(data, published, draftBase); removeEventListener("keydown", handleKeydown); removeEventListener("paste", handlePaste); removeEventListener("resize", drawRulersSoon); closePalette(); closeModal(); removeEventListener("pointerdown", closeMenusOnOutside, true); removeEventListener("blur", closeContextMenu); closeContextMenu(); closeFontPicker(); document.querySelector("#archive-font-preview")?.remove(); document.querySelector(".studio-device")?.remove(); };
+  return () => { disposed = true; clearTimeout(deferredRender); clearStudioMotion(); destroyEditorComponents(); saveDraft(data, published, draftBase); removeEventListener("keydown", handleKeydown); removeEventListener("paste", handlePaste); removeEventListener("resize", drawRulersSoon); closePalette(); closeModal(); document.documentElement.classList.remove("studio-dark"); removeEventListener("pointerdown", closeMenusOnOutside, true); removeEventListener("blur", closeContextMenu); closeContextMenu(); closeFontPicker(); document.querySelector("#archive-font-preview")?.remove(); document.querySelector(".studio-device")?.remove(); };
 }

@@ -13,7 +13,7 @@
 
 | 파일 | 역할 |
 |---|---|
-| `index.html` | 진입점. CSS/JS를 `?v=studio8`로 캐시 무효화 |
+| `index.html` | 진입점. CSS/JS를 `?v=studio8b`로 캐시 무효화 |
 | `app.js` | 라우팅, Experience 화면, 작품 상세, Archive 화면 틀(고정 레이어 포함) |
 | `archive-editor.js` | 빌더 본체: 데이터 정규화(`normalize*`), 블록 마크업, 공개 사이트 실행(`bindArchiveViewer`), 편집기(`bindArchiveStudio`), 검수(`runPreflight`) |
 | `archive/responsive.js` | Desktop/Tablet/Mobile 배치: 화면별 덮어쓰기 값, 미디어쿼리 CSS 생성, 자동 정렬(`autoLayout`) |
@@ -33,6 +33,7 @@
 | `docs/STUDIO8_REPORT_2026-10-17.md` | Studio 8 사용법·미완 항목 |
 | `docs/ROADMAP_STUDIO6.md` | **Studio 6 작업표**(이미지·영상을 재료로 + 편집기 손맛). 상태 표시(✅/🌙/📋)와 진행 기록을 함께 갱신 |
 
+Studio 8.1 편집기 새 얼굴: 루트에 `studio-v8` 클래스, 디자인 토큰은 `styles.css` 끝 "Studio 8.1" 섹션의 CSS 변수(`--studio-panel`·`--studio-surface`·`--studio-text`…). 다크 테마는 `.archive-studio.is-dark` + `html.studio-dark`(Ctrl+Shift+D, localStorage `psj-studio-theme`). 왼쪽 패널은 탭(`data-left-panel`=layers·insert·assets·settings, `setLeftTab`). UI 글꼴 Pretendard는 편집기에서만 CDN 링크로 불러온다.
 Studio 8에서 추가된 것: 블록 `maskPreset`·`maskImage`·`maskMode`·`maskSize`·`maskPosition`(마스크, `maskImageFor`), `duotone`·`duotoneDark`·`duotoneLight`(SVG 필터 `duotoneFilterMarkup`), 폼 블록 타입 `form`(`formEndpoint`·`formFields`·`formExtra`·`formSubmitLabel`·`formSuccess`, 마크업 `formMarkup`, 공개 화면 제출은 `bindArchiveViewer`), 페이지 `guides{v,h}`·`canvas.columns/columnGap/columnMargin`, 설정 `siteURL`·`theme{toggle,darkBackground,darkText,dimMedia}`. 편집기 UI 상태(눈금자·컬럼·최근 색·팔레트 최근 명령)는 localStorage `psj-studio-*`. 새 편집기 코드는 `bindArchiveStudio` 안에 "Studio 8" 주석 블록으로 묶여 있다.
 Studio 6에서 블록에 추가된 필드: `clipShape`·`clipCustom`(모양으로 자르기, `clipPathFor`), `focalX`·`focalY`(보이는 중심 → `--focal`), `hoverEffect`·`hoverSrc`(`data-hover-effect`, CSS는 styles.css 끝 Studio 6 섹션), `contrast`·`saturate`·`brightness`·`hueRotate`·`sepia`·`invert`(`visualEffectStyle`). 편집기 클립보드 키는 `psj-archive-clipboard-v1`(localStorage). 새 컴포넌트: `scroll-sequence`, `media-text`, `hover-reveal`, `compare-slider`.
 
@@ -57,7 +58,7 @@ block: { id, type, x, y, width, height, z, ...type별 값, motion{entrance,hover
 1. **옛 데이터가 계속 열려야 합니다.** 필드를 추가할 땐 `normalizeBlock`/`normalizePage`/`normalizeArchiveData`에 기본값을 넣고, 없던 값이 들어와도 깨지지 않게 하세요. 필드 이름을 바꾸거나 지우지 마세요.
 2. 새 블록 속성을 추가하면 함께 손볼 곳: `normalizeBlock` → 마크업(`blockContent`/`archiveBlockMarkup`) → 인스펙터(`inspectorMarkup`) → 공개 사이트 동작(`bindArchiveViewer`) → 필요하면 `runPreflight` 경고 → `.pages.yml`.
 3. 화면 크기마다 달라야 하는 값이면 `archive/responsive.js`의 `OVERRIDE_RULES`에 추가하고 `responsiveCSS`에서 CSS로 내보내세요.
-4. **모듈을 고치면 캐시 버전을 올리세요**: 모든 `?v=studio8` 문자열(index.html, app.js, archive-editor.js, archive/*.js, playground)을 같은 새 값으로 바꿉니다.
+4. **모듈을 고치면 캐시 버전을 올리세요**: 모든 `?v=studio8b` 문자열(index.html, app.js, archive-editor.js, archive/*.js, playground)을 같은 새 값으로 바꿉니다.
 5. 외부 라이브러리는 CDN + **정확한 버전 고정**만. 컴포넌트는 `ctx.lib(name)`으로, 목록은 `LIBRARIES`에.
 6. 모든 움직임은 `prefers-reduced-motion`·방문자 "Pause motion"·터치 기기(hover 없음)를 고려합니다.
 7. 편집기 UI 문구는 한국어. 사용자가 보는 설명은 짧고 구체적으로.

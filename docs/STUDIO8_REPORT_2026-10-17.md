@@ -81,3 +81,10 @@
 
 수정: `.pages.yml`, `CLAUDE.md`, `README.md`, `app.js`, `archive-editor.js`(+약 900줄), `archive/components-host.js`, `archive/effects.js`, `components/playground.html`, `components/registry.js`, `index.html`, `styles.css`(+약 190줄), `docs/ROADMAP_STUDIO6.md`
 새 파일: `404.html`, `archive/studio-ui.js`, `archive/templates.js`, `archive/checkpoints.js`, `archive/github-publish.js`, `components/lottie-player.js`, `components/horizontal-scroll.js`, `components/image-glitch.js`, `components/coverflow-3d.js`, 이 보고서
+
+## 6. 8.1 추가 — 편집기 새 얼굴
+
+- **왜**: 기능은 늘었는데 패널·툴바·입력칸 디자인이 그대로라 "똑같다"고 느껴졌어요. 그래서 편집기 화면 자체를 다시 그렸습니다.
+- **무엇이 바뀌었나**: UI 글꼴(Pretendard), 색·간격·둥글기 토큰 통일, 왼쪽 패널을 **탭 4개**(레이어 · ＋ 추가 · 자산 · 설정)로 정리해 스크롤이 짧아짐, 상단 바는 Design/Motion·Desktop/Tablet/Mobile·줌이 **세그먼트 컨트롤**, 나머지는 아이콘 버튼과 구분선, **게시**는 보라색 주 버튼. 레이어 줄·페이지 줄·요소 타일·인스펙터 섹션 헤더(펼침 화살표)·입력칸(30px, 포커스 링)도 새 스타일.
+- **편집기 다크 테마**: 상단 ◐ 버튼 또는 `Ctrl+Shift+D`. 패널·툴바·메뉴·팔레트·모달까지 어두워지고 캔버스(작업물)는 그대로예요. 선택은 브라우저에 기억돼요.
+- 처음 열 때 페이지가 비어 있으면 **＋ 추가** 탭이 먼저 열려요. 아니면 마지막에 보던 탭.
